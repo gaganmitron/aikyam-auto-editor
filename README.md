@@ -1,31 +1,49 @@
 # Aikyam Video Intelligence
 
-Long temple recording → transcript, scenes, vision + audio understanding, ranked devotional moments → validated **EditPlan** →
-9:16 / 1:1 / 16:9 renders + thumbnail → preview → publish. Design and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Long temple recording (optionally + extra clips/photos + your own music) → transcript, scenes, vision + audio
+understanding, ranked devotional moments → a story-aware **Creative Engine** selects and arranges them → validated
+**EditPlan** → 9:16 / 1:1 / 16:9 renders + thumbnail → automated QC (with a deterministic re-edit loop) → preview →
+publish. Design and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (some sections predate the Creative
+Engine work below — [docs/HANDOFF.md](docs/HANDOFF.md) is more current). **New to this repo? Start with
+[SETUP.md](SETUP.md)** — full fresh-machine setup, this section is the quick-reference version.
 
 ## 1. Run it locally (no Docker, no Kafka)
 Needs Python ≥3.9, `ffmpeg` (libass + libx264), Noto fonts (Kannada/Devanagari/Tamil/Telugu) for Indic captions.
+See [SETUP.md](SETUP.md) for the full walkthrough (including the CPU-torch install, `/tmp`-too-small fallback,
+and optional pieces); short version:
 ```bash
 make venv && . .venv/bin/activate
 # real models (SigLIP vision, CLAP audio; ~1.5 GB download on first use). CPU torch: the default wheel is multi-GB CUDA.
 pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu && pip install -e '.[clip]'
 
 aikyam-video process ./sample.mp4 -o output --temple-id temple_123
+# several clips/photos + your own music in one reel (mixed inputs; ids are printed: v1.. videos, i1.. images)
+aikyam-video process a.mp4 b.mp4 photo.jpg --music-file song.mp3 --i-own-the-music-rights \
+    --format reel --title "Ganga Aarti" [--order v2,v1,i1] [--opening establish] [--hook-first] [--renderer ffmpeg|diffusion|remotion]
+# the small web UI (upload clips + music, arrange order, make the reel) -- not an `aikyam-video` subcommand, run as its own module
+python -m aikyam_video.ui   # -> http://127.0.0.1:8090, data under results/ui (AIKYAM_UI_DIR)
 ```
 Outputs in `output/`: `transcript.json scenes.json moments.json edit-plan.json reel-9x16.mp4 square-1x1.mp4 landscape-16x9.mp4 thumbnail.jpg`
-plus `entities.json vision.json embeddings.json audio.npz cost.json metrics.prom thumbnails/` (all candidates + scores).
+plus `entities.json vision.json embeddings.json audio.npz cost.json metrics.prom thumbnails/ assets/<id>/` (per-source
+analysis cache for mixed-input runs), `qc.json` (post-render checks) and `overlay_<format>.ass` (captions).
 Without the `[clip]` extra it degrades (with a warning) to a colour/face heuristic; no audio-event tagging.
 
 ```
-aikyam-video analyze|highlights|plan|render|process INPUT [-o DIR] [--format reel|square|landscape]
+aikyam-video analyze|highlights|plan|render|process INPUT... [-o DIR] [--format reel|square|landscape]
    [--temple-id T] [--festival-id festival_9] [--location "Mysuru"] [--language kn] [--translate]
    [--caption-lang kn] [--caption-mode sentence|word] [--target-seconds 45] [--whisper-model small]
    [--vision auto|clip|heuristic] [--audio-tagger auto|clap|none] [--planner deterministic|llm]
-   [--renderer ffmpeg|remotion] [--transition crossfade|fade|cut] [--transition-seconds 0.5]
-   [--music auto|off] [--music-track ID] [--music-volume 0.5] [--scoring-config weights.json]
+   [--renderer ffmpeg|remotion|diffusion] [--transition crossfade|fade|cut] [--transition-seconds 0.5]
+   [--music auto|off] [--music-file YOUR.mp3 --i-own-the-music-rights] [--music-web] [--music-track ID] [--music-volume 0.5]
+   [--engine creative|classic] [--pacing contemplative|devotional|festive] [--opening hook|establish] [--hook-first]
+   [--order v3,v1,i2] [--title "..."] [--subtitle "..."] [--reels N] [--variants N] [--allow-silent]
+   [--no-qc] [--qc-attempts 2] [--no-edge-snap] [--no-motion-dedupe] [--scoring-config weights.json]
 aikyam-video live SOURCE [--chunk 60 --overlap 10 --min-score 0.4 --no-render]   # rolling highlights from a stream/file
 aikyam-video serve                       # Media API            aikyam-video worker --role orchestrator|intelligence|highlight|planner|render
+python -m aikyam_video.ui                # small web UI (upload, arrange, render) -- separate module, not a CLI subcommand
 ```
+`process` is the only command that accepts several inputs at once, mixing video/image/audio (see `--order` above).
+`--engine classic` uses the older greedy score-ordered planner instead of the Creative Engine (section 4).
 
 ## 2. Run the full stack (Docker Compose: Postgres, MinIO, Redpanda/Kafka, API, 5 workers)
 ```bash
@@ -49,18 +67,29 @@ GPU toggle `workers.<role>.gpu`, `keda.enabled`). Each worker pod = one role, on
 | Area | Where |
 |---|---|
 | Transcription (faster-whisper, word timestamps, language detect, hallucination filter, optional translate) | `transcribe.py` |
-| Scenes, keyframes | `scenes.py` |
+| Scenes, keyframes; neural cut/speech boundaries (TransNetV2, Silero VAD, `.venv-beat`) with heuristic fallback | `scenes.py`, `creative/mlx.py` |
 | Vision (SigLIP zero-shot labels, moderation, deity guess, embeddings) / audio events (CLAP zero-shot) | `vision.py`, `audio.py` |
 | Entities → canonical IDs (local catalog, or Aikyam KG over HTTP) | `entities.py`, `kg.py` |
-| Candidate generation → validation → pluggable scoring | `highlights.py`, `scoring.py` |
-| EditPlan (JSON Schema, timestamp validation) — deterministic planner and LLM planner (Claude, validated, falls back) | `plan.py`, `planner_llm.py` |
-| Renderers: FFmpeg (default) and Remotion (React); tracked subject reframing; templates (ritual, festival ×6, divine moment); logo; captions (word/sentence, kn/hi/en/ta/te/mr by font table); music with ducking (Aikyam-owned library only) | `render.py`, `render_remotion.py`, `reframe.py`, `captions.py` |
+| Candidate generation → validation (duration/scenes/duplicates/black frames/**event boundary**, next row) → pluggable scoring (7 weighted components incl. novelty) | `highlights.py`, `scoring.py` |
+| Cheap event-boundary detection from scene-embedding similarity (candidates only — not wired into scoring/story selection) | `creative/events.py` |
+| EditPlan (JSON Schema v1/v3, timestamp validation) — deterministic planner and LLM planner (Claude, validated, falls back) | `plan.py`, `planner_llm.py` |
+| **Creative Engine** (default, `--engine creative`): beam-search story planner over a narrative arc (opening→buildup→ritual→reveal→climax→closing), pacing profiles (contemplative/devotional/festive), per-edge transitions incl. J/L cuts, subject-aware camera modes (stationary/pan/track) + safe zones, Ken Burns for stills, bar-aligned music sync (Beat This!, optional), audio mixer (ducking, BS.1770 loudness, true-peak limiter), mixed video/image/audio inputs in one reel, self-editing `--variants` loop | `creative/` (`story.py`, `pacing.py`, `transitions.py`, `mixer.py`, `music_sync.py`, `layout.py`, `stills.py`, `autoedit.py`, `engine.py`) |
+| Post-render QC (loudness, crop/reframe, duplicate/weak shots, transitions, captions safe-zone, start/end, **semantic role-label consistency** — flags a clip whose content doesn't match its own label) + deterministic re-edit loop | `creative/qc.py`, `creative/replan.py` |
+| Evaluation harness for rendered reels (hook quality, redundancy, edge-to-cut alignment, safe-zone/crop/loudness stats) | `evaluation.py`, `tools/eval_reel.py` |
+| Renderers: FFmpeg (default), Remotion (React, ~15× slower), diffusionstudio/editor (headless Chromium, optional); tracked subject reframing; templates (ritual, festival ×6, divine moment); logo; captions (word/sentence, kn/hi/en/ta/te/mr by font table); music: licensed library, `--music-file` (your own, rights-attested), or `--music-web` (Openverse, CC0/public-domain/CC-BY) | `render.py`, `render_remotion.py`, `render_diffusion.py`, `reframe.py`, `captions.py` |
 | Thumbnails (scored candidates, all kept) | `thumbnails.py` |
+| Small web UI: upload clips/photos + music, drag/arrow ordering, title/subtitle, in-page player + download | `ui.py` |
 | Kafka events, orchestrator + 4 worker roles, idempotency, retries, state machine (Postgres) | `bus.py`, `workers.py`, `events.py`, `jobs.py` |
 | Cost per job (₹/source-hour, ₹/reel), Prometheus metrics, JSON logs | `cost.py`, `metrics.py` |
 | Publish, auto-publish policy, notifications, preview page, dashboard | `publish.py`, `api.py` |
 | Semantic search, duplicate detection, "similar" recommendations, video embeddings | `library.py` |
 | Live rolling highlights, personalization (profile boosts), moderation gate | `live.py`, `options.py`, `highlights.py` |
+
+See [docs/research/experiment_matrix.md](docs/research/experiment_matrix.md) for the measured evidence behind
+several fixes already in `creative/story.py`, `highlights.py`, and `creative/qc.py` — including a real, shipped
+example of the "vision label ≠ content" gap QC's role-label-consistency check now catches (a fireworks scene the
+vision model repeatedly mislabeled as an aarti ritual moment). Read it before changing story selection or
+moment scoring again.
 
 ## 5. Configuration
 | Env | Meaning |
@@ -85,18 +114,32 @@ python -m pytest tests/test_units.py tests/test_features.py                     
 KAFKA_BOOTSTRAP=localhost:19092 python -m pytest tests/test_workers.py            # also runs the real-Kafka tests
 ```
 Start a broker: `podman|docker run -d -p 19092:19092 redpandadata/redpanda:v24.2.4 redpanda start --overprovisioned --smp 1 --memory 512M --kafka-addr PLAINTEXT://0.0.0.0:19092 --advertise-kafka-addr PLAINTEXT://127.0.0.1:19092`.
-The default fixture is **synthetic** (generated). `samples/` has one real Wikimedia Commons temple clip, a Ganga aarti (licence in `samples/LICENSES.md`), used by
-`tests/test_real_footage.py`, and `tools/eval_vision.py` / `tools/run_batch.sh` for eyeballing. Bring your own: `AIKYAM_SAMPLE=/path/x.mp4 make test`.
+The default fixture is **synthetic** (generated). This repo ships no real footage (`.gitignore` excludes large media, and GitHub
+rejects files over 100 MB anyway) — `tests/test_real_footage.py` looks in `samples/` and **skips itself** if nothing's there
+(`samples/LICENSES.md` documents the licence of whatever real clip was last used during development). Bring your own real clip
+for eyeballing output quality with `tools/eval_reel.py` / `tools/ab_run.py`; `AIKYAM_SAMPLE=/path/x.mp4 make test` for the
+regression test. One test is a known, documented exception (see the file itself and `docs/research/experiment_matrix.md`
+EXP-002b/EXP-003) — a deliberately thin synthetic pool where a pre-existing clip-count filter picks a worse sequence than the
+scorer's own best answer; tracked, not silently patched.
 
 ## 7. External dependencies (pinned in `pyproject.toml` / `package.json`)
 faster-whisper 1.1.1 · scenedetect 0.6.7.1 · opencv-python-headless 4.10.0.84 · torch 2.5.1(+cpu) / torchvision 0.20.1 · open_clip_torch 2.29.0 (SigLIP `timm/ViT-B-16-SigLIP`) ·
 transformers 4.46.3 (CLAP `laion/clap-htsat-unfused`) · confluent-kafka 2.5.3 · anthropic 0.125.0 · FastAPI 0.128.8 · SQLAlchemy 2.0.36 + psycopg 3.2.3 ·
 boto3 1.42.97 · prometheus-client 0.26.0 · Remotion 4.0.242 (Node ≥18, Chromium) · system: ffmpeg ≥6, Noto fonts, espeak-ng (test fixture only).
+Optional: Beat This! (MIT, `.venv-beat`, Python ≥3.10 — bar-aligned cuts, falls back to a heuristic tracker without it);
+diffusionstudio/editor (MPL-2.0, pinned commit, vendored unmodified by `renderer/diffusion/setup.sh`, not committed — `--renderer diffusion`).
 Model weights come from HuggingFace on first use (baked into the Docker image).
 
 ## 8. Known limitations
-See the final report in the conversation and ARCHITECTURE.md. Highlights: zero-shot vision/audio (checked on a handful of clips, not a benchmark; deity *identity* is weak);
-one reel per source video; audio is loaded whole into RAM (multi-hour videos need a big machine); Remotion is ~15× slower than FFmpeg; KG and feed contracts are assumed.
+See [docs/HANDOFF.md](docs/HANDOFF.md) (environment quirks, build history, an honest list of open weaknesses) and
+[docs/research/experiment_matrix.md](docs/research/experiment_matrix.md) (measured findings — several are more specific
+versions of the limitations below, with numbers). Highlights: zero-shot vision/audio labels are checked on a handful of real
+clips, not benchmarked, and have a **measured, non-hypothetical failure mode** — SigLIP has repeatedly mislabeled fireworks
+footage as an "aarti" ritual moment on real footage (EXP-004 in the experiment log), which QC's role-label-consistency check
+now flags but the story/scoring stages upstream of it still don't correct; one reel per source video; audio is loaded whole
+into RAM (multi-hour videos need a big machine); Remotion is ~15× slower than FFmpeg; KG and feed contracts are assumed,
+never verified against a real service; the LLM planner has never been exercised against the real Claude API on this
+project (no credentials available during development — only fake-client tests exist).
 
 ## 9. Devotional music and transitions
 **Transitions.** Consecutive moments are joined with a **crossfade** (picture and sound blend, default 0.5 s); `--transition cut|fade` to change.
@@ -106,6 +149,9 @@ The reel is shorter by the overlaps; the plan, captions and both renderers use t
 1. `music/library.json` lists a track that matches the reel (ritual / deity / festival ids, visual labels like aarti or procession, energy calm..driving), **and**
 2. the original audio is not already devotional music or chanting (bell/conch/chant/bhajan level < 0.6): music is never laid over a live bhajan.
 Otherwise there is no music and `edit-plan.json` records why (`audio.music.reason`). `--music off` disables it; `--music-track ID` forces one library track; `--music-volume` sets the level.
+**Your own music:** `--music-file song.mp3 --i-own-the-music-rights` uses your file instead of the library (implies `--allow-silent`, so
+picture-only clips with no live audio are accepted). **`--music-web`** searches Openverse for a CC0/public-domain/CC-BY track matched to
+the reel by CLAP, instead of the local library; ignored if `--music-file`/`--music-track` is given.
 
 **Licence gate.** A track is used only if it is in `library.json` with `licenceVerified: true` and an allowed licence; CC-BY tracks need `attribution` (it is put in the plan and the feed payload `credits`);
 NC/SA and unlisted files are refused. To add your own (commissioned or properly licensed) track:
