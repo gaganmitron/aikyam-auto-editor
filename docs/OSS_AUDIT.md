@@ -99,4 +99,82 @@ What shipped by default: disjoint windows from overlapping moments (split only a
 
 Tried and **not** shipped as default: *forced hook-first* (`--hook-first`, opt-in). Enforcing the strongest opener as a separate first clip shortened all three reels (Ganga 18.1 -> 8.0 s, four videos 29.8 -> 20.6 s) and on one set picked a visibly worse-scoring opener (hook score 0.82 -> 0.38), because it consumes footage and my added "energy" weight was unvalidated (reverted). The carve-out that returns the rest of the hook's shot to the pool is kept for the opt-in path.
 
+---
+
+## Round 2 (2026-09-23): does anything out there fix what EXP-004-010 found?
+
+**Different method from Round 1, stated plainly:** this round is web research (search + reading papers/blog posts/repo
+descriptions), not full local clone-and-read-source like Round 1 above. Nothing here has been run against real
+footage or even installed. Treat every verdict below as a lead to validate the same way EXP-001-010 validated
+everything else (measure on the real Diwali clip before trusting it), not as something already proven for Aikyam.
+
+**Why this round happened:** EXP-005/006/007 (`docs/research/experiment_matrix.md`) hit a real wall — text-label
+aggregation (average, per-scene majority, max-confidence) all failed to recover correct event identity, and the
+one thing that worked (embedding-nearest-anchor) had thin, fragile margins. The obvious next tool — a VLM caption
+per candidate clip — was blocked: no `ANTHROPIC_API_KEY` on this machine. This round asked: is there a way to get
+that VLM evidence without an API key, and is there anything else out there better than what's already built?
+
+### 1. Story/event understanding — the actual finding
+
+**Root cause of the EXP-004 mislabeling, now with a citable mechanism, not just an observed symptom.** SigLIP's
+own paper (Zhai et al., *Sigmoid Loss for Language Image Pre-Training*, ICCV 2023) and independent analysis since
+describe exactly the failure mode measured on real Diwali footage: SigLIP scores every label independently
+(sigmoid, not softmax) with **no cross-class competition** — "the loss for every pair... is independent of other
+pairs," and models trained this way "remain near chance" on tasks needing relative discrimination between visually
+adjacent classes, despite strong zero-shot numbers overall. That's a precise description of "aarti" (0.61) beating
+"fireworks" (0.26) on the same frame instead of the two competing — SigLIP was never asked to make them compete.
+This doesn't change any conclusion already logged (EXP-004-010 stand as measured), it explains *why* the pipeline's
+one perception model has this specific blind spot, structurally, not as a one-off bug.
+
+**Candidate fix, not yet tried on real data: a small local VLM via Ollama, specifically to unblock EXP-005/006/007.**
+**Moondream2** (~1.9B params, Apache-2.0, genuinely commercial-friendly — "no obligation to open-source related
+code, no separate commercial license required") runs on CPU in the same ~2-4 GB envelope SigLIP+CLAP+Whisper
+already use one-at-a-time on this machine, served locally through Ollama with no API key and no network call per
+inference. This is the concrete, license-clean answer to the exact dead end EXP-007 hit: ask it "what is happening
+in this frame" for the handful of candidate clips a story pass selects (not every scene — matches the existing
+tiered-compute discipline), and cross-check its answer against the vision label, instead of trusting SigLIP alone
+or building another text-label statistic (three of those already failed this session). **Not validated yet** — next
+step would be install it, run it on the same Diwali keyframes EXP-004 hand-verified, and see if it actually agrees
+with the ground truth before wiring anything into `qc.py` or `highlights.py`.
+
+*(MiniCPM-V and LLaVA-Phi-3-Mini also came up as sub-4GB CPU-capable options; Moondream2 is the one with an
+unambiguous licence and the smallest footprint, so it's the one worth trying first, not a claim the others are worse.)*
+
+### 2. Editing / creative quality — nothing beats what's already built
+
+Searched for newer auto-editing / shot-selection / story-pacing tools since Round 1 (2026-09-20). Nothing new:
+`jumpcutter` and its forks, `cut-the-crap`, and similar tools are all **silence/motion-cut detection only** — they
+decide *when* to cut, not *what belongs together* or *in what order*. Aikyam's beam-search story planner
+(`creative/story.py`) already does something these don't attempt at all: score candidate shots against narrative
+roles, order by pacing profile, penalize redundancy and chronology violations. `auto-editor` and `hypecut`, the two
+repos actually adopted into `creative/edges.py` in Round 1, remain the most relevant prior art and are already in.
+One product worth naming for context, not adoption: **VideoHighlighter** (Ollama-powered local highlight detection
+— scene/object detection + audio analysis) is a full competing product, not a library to pull code from, but its
+existence is a signal that "local VLM for highlight/event understanding" (section 1 above) is a pattern others are
+independently converging on, not a one-off idea.
+
+**Verdict: no action.** The story/pacing layer is already ahead of what's publicly available for this niche; the
+one real gap found (event *identity*, not shot selection) is section 1's problem, not this one's.
+
+### 3. Audio ducking / mixing — already ahead of what's out there
+
+Searched for Python/FFmpeg ducking and sidechain-compression tools. FFmpeg's own `sidechaincompress` filter and
+wrapper libraries (`pydub`, `FastDub`) implement basic threshold-triggered ducking — the same *idea*
+`creative/mixer.py` already implements, but `mixer.py` additionally does BS.1770 integrated loudness targeting and
+a look-ahead true-peak limiter, which none of the tools found do. **Verdict: no action** — nothing found is more
+sophisticated than what's shipped. The actual open item here (HANDOFF §7.5: ducking margins never tuned by ear) is
+a listening/measurement problem, not a missing algorithm — no repo fixes "nobody has listened to the output yet."
+
+### 4. General
+
+No new repositories surfaced since Round 1 that weren't already covered above or in the original licence matrix.
+The ecosystem for temple/devotional-specific auto-editing is narrow enough that three days didn't change the
+picture; general-purpose "AI clip generator" tools (turn long video into 9:16 shorts) exist in volume but are all
+either talking-head/podcast-oriented (irrelevant to silent or ambient temple footage) or closed-source products.
+
+**Net result of this round:** one real, actionable, license-clean lead (Moondream2 via Ollama, for the still-open
+event-identity problem) and three "already ahead, no action" confirmations. Consistent with `new.md`'s gates —
+logged as a lead, not implemented, until it's measured against the same real footage everything else in this
+project was validated against.
+
 Edge snapping on real multi-cut footage: it acted once (moved a start from 15.48 s to 15.51 s, removing a one-frame flash of the previous shot); otherwise the moment windows already coincided with the scenes. Small, real, not dramatic.
