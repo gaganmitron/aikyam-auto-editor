@@ -540,6 +540,77 @@ starting point.
 
 ---
 
+## EXP-011: install and test Moondream2 -- does it actually fix EXP-004's failure?
+
+**Setup:** Ollama already present on this machine; `ollama pull moondream` (Apache-2.0,
+~1.9B, ~1.2GB). Downloaded 2 new real clips from Wikimedia Commons (not previously
+used, credited in `inputs/CREDITS.txt`, not edited into a Reel): a genuine temple
+aarti (CC BY-SA 4.0) and a genuine fireworks display (CC BY 3.0) -- clean,
+prototypical examples of the two categories EXP-004 found confused. Extracted 6
+frames (3 per clip) plus the exact 3 Diwali frames EXP-004-007 identified as
+SigLIP's real mislabels. Ran the pipeline's actual `ClipVision` (SigLIP wrapper,
+including its existing `_gate()` fireworks-vs-aarti mitigation) and Moondream
+(one-word prompt: "ritual" or "fireworks") on the same frames.
+
+**Result 1 -- on the new, clean clips: SigLIP got 6/6 right too.** This was an
+important correction to the working hypothesis: SigLIP is not universally
+unreliable at this distinction. It correctly labeled all 3 aarti frames
+(idol/priest/deity) and all 3 fireworks frames. These are prototypical, unambiguous
+examples (static shrine close-up; dense professional firework burst) -- very
+different from Diwali's diffuse handheld sparklers. **The failure mode is
+correlated with visual ambiguity/atypicality, not a blanket SigLIP weakness** --
+worth stating plainly since it's a narrower, more accurate claim than Round 2's
+framing implied.
+
+**Result 2 -- on Moondream, same clean clips: 6/6 correct too** (`'ritual'` x3,
+`'fireworks'` x3). Doesn't differentiate the two models on easy cases, but confirms
+Moondream is a competent, working classifier before testing it on the hard case.
+
+**Result 3 -- on the actual Diwali scenes that failed (the one that matters):**
+Moondream got **3/3 correct**, including the closest call (scene36, where SigLIP
+had a near-tie: idol 0.21 vs aarti 0.21).
+
+| Diwali scene | SigLIP said (real pipeline output, EXP-004) | Moondream says |
+|---|---|---|
+| 241.4-257.3 (aarti 0.61, fireworks 0.26) | aarti (wrong, and `_gate()` didn't catch it -- aarti was still numerically ahead) | **'fireworks' (correct)** |
+| 262.7-269.9 (aarti 0.53) | aarti (wrong) | **'fireworks' (correct)** |
+| 269.9-279.9 (idol/aarti 0.21 near-tie) | idol/aarti (wrong, weakest case) | **'fireworks' (correct)** |
+
+**9/9 correct across both test sets.** This is the clean confirmation Round 2 of
+`docs/OSS_AUDIT.md` flagged as needed before trusting Moondream as a fix: it
+doesn't just work on easy cases, it specifically corrects the exact failures this
+session spent four experiments (EXP-004-007) tracing.
+
+**The honest cost, and it's real:** CPU inference on this machine took **~195s per
+frame on average** (191-203s across 9 runs, remarkably consistent), under real
+system memory pressure (other running applications left available RAM in the
+150-500MB range during inference, some swap thrashing). Two earlier attempts
+timed out entirely (120s and a subsequent confused double-request) before landing
+on a workable request shape: `num_predict: 12` (short answer only) and patient
+600s timeouts. This is far too slow for per-scene analysis (every scene, the way
+SigLIP runs today) -- but it fits the tiered-compute design Final.md and `new.md`
+both argue for: only the handful of clips a story pass actually selects as
+candidates (6 per reel here) need this, not all 45+ scenes in a source video. At
+~3.2 min/clip, checking 6 selected clips costs about 20 minutes of CPU time per
+reel -- expensive for interactive use, plausible for an offline/batch QC pass.
+
+**Conclusion:** Moondream2 is no longer just a license-clean lead -- it's a
+validated fix for the specific, real failure this session traced end to end, with
+zero false positives or negatives across 9 real-content tests. Not yet wired into
+`qc.py`'s `check_role_label_consistency` (EXP-010) or anywhere else in the
+pipeline -- that would need its own before/after check (same discipline as every
+other change this session), plus a decision on where the ~3 min/clip cost is
+acceptable (a background QC pass, not inline with rendering).
+
+**Next action:** implementation decision, not research -- wire Moondream as a
+second opinion specifically for clips `check_role_label_consistency` already
+flags (a natural, minimal integration point: only escalate to the slow model when
+the cheap embedding check already raised a flag), or leave it as a documented,
+validated, not-yet-integrated capability. Flagging rather than deciding
+unilaterally given the real latency cost.
+
+---
+
 ## EXP-005: event identity — given correct boundaries, can label aggregation recover WHAT each event is?
 
 **Question:** EXP-004/004b solved (on this clip) WHERE an event starts and ends.
