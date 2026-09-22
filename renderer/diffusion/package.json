@@ -1,0 +1,7 @@
+{
+  "name": "aikyam-diffusion-harness",
+  "private": true,
+  "type": "module",
+  "description": "Headless Chromium harness that renders an Aikyam EditPlan through diffusionstudio/editor's runtime + encoder (MPL-2.0, vendored unmodified at a pinned commit).",
+  "dependencies": { "esbuild": "0.25.10", "puppeteer-core": "24.22.0", "@babel/core": "^7.29.7", "@babel/preset-typescript": "^7.27.1", "babel-preset-solid": "^1.9.12" }
+}

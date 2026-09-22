@@ -1,0 +1,45 @@
+{
+ "_comment": "Add a language = add an entry. font is a fontconfig family name; wordsPerCue tunes word-level captions. em: average advance of one character/cluster in em (line width = safe width / (fontSize*em)).",
+ "default": {
+  "font": "Noto Sans",
+  "wordsPerCue": 4,
+  "maxCharsPerLine": 34,
+  "em": 0.62
+ },
+ "en": {
+  "font": "DejaVu Sans",
+  "wordsPerCue": 4,
+  "maxCharsPerLine": 34,
+  "em": 0.62
+ },
+ "hi": {
+  "font": "Noto Sans Devanagari",
+  "wordsPerCue": 3,
+  "maxCharsPerLine": 28,
+  "em": 0.85
+ },
+ "kn": {
+  "font": "Noto Sans Kannada",
+  "wordsPerCue": 3,
+  "maxCharsPerLine": 26,
+  "em": 0.85
+ },
+ "ta": {
+  "font": "Noto Sans Tamil",
+  "wordsPerCue": 3,
+  "maxCharsPerLine": 26,
+  "em": 0.85
+ },
+ "te": {
+  "font": "Noto Sans Telugu",
+  "wordsPerCue": 3,
+  "maxCharsPerLine": 26,
+  "em": 0.85
+ },
+ "mr": {
+  "font": "Noto Sans Devanagari",
+  "wordsPerCue": 3,
+  "maxCharsPerLine": 28,
+  "em": 0.85
+ }
+}

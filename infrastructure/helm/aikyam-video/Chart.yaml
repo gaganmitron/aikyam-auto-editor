@@ -1,0 +1,5 @@
+apiVersion: v2
+name: aikyam-video
+description: Aikyam Video Intelligence - API + event-driven workers
+version: 0.2.0
+appVersion: "0.2.0"

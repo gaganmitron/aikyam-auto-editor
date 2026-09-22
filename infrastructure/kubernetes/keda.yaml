@@ -1,0 +1,22 @@
+# Autoscale workers on Kafka consumer lag. Requires KEDA (https://keda.sh). Consumer group == role name.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: {name: intelligence-worker}
+spec:
+  scaleTargetRef: {name: intelligence-worker}
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  triggers:
+    - type: kafka
+      metadata: {bootstrapServers: kafka:9092, consumerGroup: intelligence, topic: media-processing-jobs, lagThreshold: "2"}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: {name: render-worker}
+spec:
+  scaleTargetRef: {name: render-worker}
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  triggers:
+    - type: kafka
+      metadata: {bootstrapServers: kafka:9092, consumerGroup: render, topic: media-processing-jobs, lagThreshold: "2"}

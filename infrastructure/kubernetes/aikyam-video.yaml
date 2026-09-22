@@ -1,0 +1,129 @@
+# Plain manifests (Helm chart in ../helm/aikyam-video renders the same shape from values).
+# Every worker pod runs ONE job at a time; scale with replicas (or KEDA on Kafka lag: keda.yaml).
+# Secret `aikyam-video-secrets` must provide: AIKYAM_API_KEY, DATABASE_URL, KAFKA_BOOTSTRAP, S3_BUCKET, S3_ENDPOINT_URL, S3_ACCESS_KEY, S3_SECRET_KEY.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: media-api, labels: {app: media-api, part-of: aikyam-video}}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: media-api}}
+  template:
+    metadata: {labels: {app: media-api, part-of: aikyam-video}}
+    spec:
+      containers:
+        - name: api
+          image: aikyam/video:0.2.0
+          args: ["serve", "--port", "8080"]
+          ports: [{containerPort: 8080}]
+          envFrom: [{secretRef: {name: aikyam-video-secrets}}]
+          resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {cpu: "1", memory: 2Gi}}   # API does no heavy compute in Kafka mode
+          readinessProbe: {httpGet: {path: /healthz, port: 8080}}
+          livenessProbe: {httpGet: {path: /healthz, port: 8080}, initialDelaySeconds: 20}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: media-api}
+spec: {selector: {app: media-api}, ports: [{port: 80, targetPort: 8080}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: orchestrator, labels: {app: orchestrator, part-of: aikyam-video}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: orchestrator}}
+  template:
+    metadata:
+      labels: {app: orchestrator, part-of: aikyam-video}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9100"}
+    spec:
+      containers:
+        - name: worker
+          image: aikyam/video:0.2.0
+          args: ["worker", "--role", "orchestrator"]
+          envFrom: [{secretRef: {name: aikyam-video-secrets}}]
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "1", memory: 1Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: intelligence-worker, labels: {app: intelligence-worker, part-of: aikyam-video}}
+spec:
+  replicas: 2                                   # horizontally scalable
+  selector: {matchLabels: {app: intelligence-worker}}
+  template:
+    metadata:
+      labels: {app: intelligence-worker, part-of: aikyam-video}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9100"}
+    spec:
+      terminationGracePeriodSeconds: 600         # let the current job finish
+      containers:
+        - name: worker
+          image: aikyam/video:0.2.0
+          args: ["worker", "--role", "intelligence"]
+          envFrom: [{secretRef: {name: aikyam-video-secrets}}]
+          resources:
+            requests: {cpu: "2", memory: 6Gi}    # Whisper + SigLIP + CLAP resident
+            limits: {cpu: "4", memory: 10Gi}     # GPU nodes: add nvidia.com/gpu: 1 and a CUDA image
+          volumeMounts: [{name: scratch, mountPath: /work}]
+      volumes: [{name: scratch, emptyDir: {sizeLimit: 50Gi}}]
+      # GPU (later): nodeSelector: {accelerator: nvidia}, tolerations: [{key: nvidia.com/gpu, operator: Exists}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: highlight-worker, labels: {app: highlight-worker, part-of: aikyam-video}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: highlight-worker}}
+  template:
+    metadata:
+      labels: {app: highlight-worker, part-of: aikyam-video}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9100"}
+    spec:
+      containers:
+        - name: worker
+          image: aikyam/video:0.2.0
+          args: ["worker", "--role", "highlight"]
+          envFrom: [{secretRef: {name: aikyam-video-secrets}}]
+          resources: {requests: {cpu: "1", memory: 2Gi}, limits: {cpu: "2", memory: 4Gi}}
+          volumeMounts: [{name: scratch, mountPath: /work}]
+      volumes: [{name: scratch, emptyDir: {sizeLimit: 50Gi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: planner, labels: {app: planner, part-of: aikyam-video}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: planner}}
+  template:
+    metadata:
+      labels: {app: planner, part-of: aikyam-video}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9100"}
+    spec:
+      containers:
+        - name: worker
+          image: aikyam/video:0.2.0
+          args: ["worker", "--role", "planner"]
+          envFrom: [{secretRef: {name: aikyam-video-secrets}}]
+          resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {cpu: "1", memory: 2Gi}}
+          volumeMounts: [{name: scratch, mountPath: /work}]
+      volumes: [{name: scratch, emptyDir: {sizeLimit: 20Gi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: render-worker, labels: {app: render-worker, part-of: aikyam-video}}
+spec:
+  replicas: 2                                   # horizontally scalable
+  selector: {matchLabels: {app: render-worker}}
+  template:
+    metadata:
+      labels: {app: render-worker, part-of: aikyam-video}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9100"}
+    spec:
+      terminationGracePeriodSeconds: 600
+      containers:
+        - name: worker
+          image: aikyam/video:0.2.0
+          args: ["worker", "--role", "render"]
+          envFrom: [{secretRef: {name: aikyam-video-secrets}}]
+          resources: {requests: {cpu: "2", memory: 3Gi}, limits: {cpu: "4", memory: 6Gi}}
+          volumeMounts: [{name: scratch, mountPath: /work}]
+      volumes: [{name: scratch, emptyDir: {sizeLimit: 50Gi}}]

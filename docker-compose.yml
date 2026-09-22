@@ -1,0 +1,62 @@
+# Local stack. `docker compose up -d --build` starts Postgres, MinIO (S3), Redpanda (Kafka), the API and the 5 workers.
+# One-shot CLI (no Kafka needed):  docker compose run --rm cli process /data/sample.mp4 -o /data/output
+x-app: &app
+  build: {context: ., dockerfile: infrastructure/docker/Dockerfile}
+  image: aikyam/video:0.2.0
+  environment: &env
+    AIKYAM_API_KEY: ${AIKYAM_API_KEY:-dev-key-change-me}
+    DATABASE_URL: postgresql+psycopg://aikyam:aikyam@postgres:5432/aikyam
+    KAFKA_BOOTSTRAP: kafka:9092
+    S3_BUCKET: aikyam-media
+    S3_ENDPOINT_URL: http://minio:9000
+    S3_PUBLIC_ENDPOINT_URL: http://localhost:9000     # what YOUR browser can reach (signed URLs); in prod: the R2/S3/CDN domain
+    S3_ACCESS_KEY: aikyam
+    S3_SECRET_KEY: aikyam-secret
+    WORK_DIR: /work
+    FEED_FILE: /work/feed.jsonl          # dev feed; set AIKYAM_FEED_URL for the real Aikyam feed
+    COST_INR_PER_CPU_HOUR: ${COST_INR_PER_CPU_HOUR:-3.0}
+  depends_on: &deps
+    postgres: {condition: service_healthy}
+    kafka: {condition: service_healthy}
+    minio-init: {condition: service_completed_successfully}
+  volumes: [work:/work, models:/models]
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16.4-alpine
+    environment: {POSTGRES_USER: aikyam, POSTGRES_PASSWORD: aikyam, POSTGRES_DB: aikyam}
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U aikyam"], interval: 5s, retries: 10}
+    volumes: [pgdata:/var/lib/postgresql/data]
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z
+    command: server /data --console-address ":9001"
+    environment: {MINIO_ROOT_USER: aikyam, MINIO_ROOT_PASSWORD: aikyam-secret}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [minio:/data]
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2024-09-16T17-43-14Z
+    depends_on: [minio]
+    entrypoint: ["/bin/sh", "-c", "sleep 3; mc alias set l http://minio:9000 aikyam aikyam-secret && mc mb -p l/aikyam-media"]
+  kafka:
+    image: docker.io/redpandadata/redpanda:v24.2.4
+    command: [redpanda, start, --overprovisioned, --smp, "1", --memory, 512M, --reserve-memory, 0M, --node-id, "0", --check=false,
+              --kafka-addr, "PLAINTEXT://0.0.0.0:9092", --advertise-kafka-addr, "PLAINTEXT://kafka:9092"]
+    healthcheck: {test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"], interval: 5s, retries: 20}
+    ports: ["9092:9092"]
+  api:
+    <<: *app
+    entrypoint: ["aikyam-video", "serve", "--port", "8080"]
+    ports: ["8080:8080"]
+  orchestrator: {<<: *app, command: [worker, --role, orchestrator, --metrics-port, "9100"]}
+  intelligence: {<<: *app, command: [worker, --role, intelligence, --metrics-port, "9100"]}
+  highlight:    {<<: *app, command: [worker, --role, highlight, --metrics-port, "9100"]}
+  planner:      {<<: *app, command: [worker, --role, planner, --metrics-port, "9100"]}
+  render:       {<<: *app, command: [worker, --role, render, --metrics-port, "9100"]}
+  cli:
+    <<: *app
+    profiles: [cli]
+    depends_on: {}
+    environment: {}
+    volumes: ["./:/data", "models:/models"]
+    working_dir: /data
+volumes: {pgdata: {}, minio: {}, work: {}, models: {}}

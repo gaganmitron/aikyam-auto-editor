@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: media-api, labels: {app: media-api, part-of: aikyam-video}}
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector: {matchLabels: {app: media-api}}
+  template:
+    metadata: {labels: {app: media-api, part-of: aikyam-video}}
+    spec:
+      containers:
+        - name: api
+          image: {{ .Values.image }}
+          args: ["serve", "--port", "8080"]
+          ports: [{containerPort: 8080}]
+          envFrom: [{secretRef: {name: {{ .Values.secretName }}}}]
+          resources: {{ toJson .Values.api.resources }}
+          readinessProbe: {httpGet: {path: /healthz, port: 8080}}
+          livenessProbe: {httpGet: {path: /healthz, port: 8080}, initialDelaySeconds: 20}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: media-api}
+spec: {selector: {app: media-api}, ports: [{port: 80, targetPort: 8080}]}

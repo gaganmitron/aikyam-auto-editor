@@ -1,0 +1,17 @@
+image: aikyam/video:0.2.0
+secretName: aikyam-video-secrets   # AIKYAM_API_KEY, DATABASE_URL, KAFKA_BOOTSTRAP, S3_*  (never baked into the image)
+api:
+  replicas: 2
+  resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {cpu: "1", memory: 2Gi}}
+# One entry per worker role. Each pod processes ONE job at a time; scale via replicas (or keda.enabled).
+workers:
+  orchestrator: {replicas: 1, resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "1", memory: 1Gi}}}
+  intelligence: {replicas: 2, scratch: 50Gi, resources: {requests: {cpu: "2", memory: 6Gi}, limits: {cpu: "4", memory: 10Gi}}}
+  highlight:    {replicas: 1, scratch: 50Gi, resources: {requests: {cpu: "1", memory: 2Gi}, limits: {cpu: "2", memory: 4Gi}}}
+  planner:      {replicas: 1, scratch: 20Gi, resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {cpu: "1", memory: 2Gi}}}
+  render:       {replicas: 2, scratch: 50Gi, resources: {requests: {cpu: "2", memory: 3Gi}, limits: {cpu: "4", memory: 6Gi}}}
+# GPU nodes (later): set for a role e.g. workers.intelligence.gpu: 1 ; nodeSelector/tolerations below apply to roles with gpu>0
+gpu: {nodeSelector: {accelerator: nvidia}, tolerations: [{key: nvidia.com/gpu, operator: Exists}]}
+keda:
+  enabled: false
+  kafka: {bootstrapServers: kafka:9092, topic: media-processing-jobs, lagThreshold: "2", maxReplicas: 10, scaleRoles: [intelligence, render]}

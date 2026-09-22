@@ -1,0 +1,11 @@
+{
+  "_comment": "opening: hook (default: strongest close, sharp shot first) | establish (wide setting first); override per run with --opening. Pacing POLICY (named, editable, ablation-tested in docs/CREATIVE_EVAL.md). Shot lengths in seconds; targets are the reel length window.",
+  "profiles": {
+    "contemplative": {"base_shot": 6.0, "min_shot": 3.5, "max_shot": 10.0, "target_min": 28, "target_max": 40, "opening": "hook", "cut_bias": 0.15, "base_blend": 0.55,
+      "why": "slow devotional footage (darshan, abhishekam): long holds, soft dissolves, room to breathe"},
+    "devotional": {"base_shot": 4.5, "min_shot": 2.5, "max_shot": 8.0, "target_min": 25, "target_max": 38, "opening": "hook", "cut_bias": 0.35, "base_blend": 0.4,
+      "why": "default temple content: aarti, bhajan, mixed ritual"},
+    "festive": {"base_shot": 3.0, "min_shot": 1.6, "max_shot": 5.5, "target_min": 22, "target_max": 34, "opening": "hook", "cut_bias": 0.7, "base_blend": 0.25,
+      "why": "processions, dance, fireworks: shorter shots, cuts on the beat, hook-first"}
+  }
+}

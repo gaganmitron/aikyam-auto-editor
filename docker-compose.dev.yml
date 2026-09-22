@@ -1,0 +1,15 @@
+# Dev override: run the working-tree code inside the prebuilt image (no rebuild).
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --no-build
+services:
+  api:
+    volumes: ["work:/work", "models:/models", "./aikyam_video:/usr/local/lib/python3.11/site-packages/aikyam_video:ro"]
+  orchestrator:
+    volumes: ["work:/work", "models:/models", "./aikyam_video:/usr/local/lib/python3.11/site-packages/aikyam_video:ro"]
+  intelligence:
+    volumes: ["work:/work", "models:/models", "./aikyam_video:/usr/local/lib/python3.11/site-packages/aikyam_video:ro"]
+  highlight:
+    volumes: ["work:/work", "models:/models", "./aikyam_video:/usr/local/lib/python3.11/site-packages/aikyam_video:ro"]
+  planner:
+    volumes: ["work:/work", "models:/models", "./aikyam_video:/usr/local/lib/python3.11/site-packages/aikyam_video:ro"]
+  render:
+    volumes: ["work:/work", "models:/models", "./aikyam_video:/usr/local/lib/python3.11/site-packages/aikyam_video:ro"]

@@ -1,0 +1,13 @@
+.venv
+**/__pycache__
+**/node_modules
+samples
+results
+output*
+work
+storage
+*.db
+tests/fixtures
+tools/eval_out
+.pytest_cache
+*.egg-info

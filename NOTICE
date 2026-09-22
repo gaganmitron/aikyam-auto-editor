@@ -1,0 +1,15 @@
+Aikyam Video Intelligence includes algorithms adapted from third-party open-source projects:
+
+  * hypecut (https://github.com/Yu-0312/hypecut), Apache License 2.0
+      snapping.py (boundary_strength, find_boundaries, refine_boundary, snap_segments), trimming.py (silence_mask, find_pause), refine/similarity.py (descriptor)
+      -> aikyam_video/creative/edges.py
+  * auto-editor (https://github.com/WyattBlue/auto-editor), Unlicense (public domain)
+      src/lib/editutil.nim smoothing -> aikyam_video/creative/edges.py smooth_mask
+  * Ideas (no code) from Apache-2.0 MediaPipe AutoFlip: camera modes and path smoothing (aikyam_video/reframe.py).
+  * diffusionstudio/editor (MPL-2.0) is used unmodified as a separate runtime under renderer/diffusion/.
+  * claude-youtube-editor (https://github.com/hassancs91/claude-youtube-editor), MIT
+      tools/clean_voice.py (local RNNoise path, RMS-match gain), tools/verify_cut.py (word diff, A/V drift idea)
+      -> aikyam_video/audio_clean.py, aikyam_video/creative/verify.py
+      aikyam_video/data/rnnoise/sh.rnnn is copied from that repo; it originates from GregorR/rnnoise-models (upstream licence NOT yet verified: confirm before shipping commercially).
+  * TransNetV2 (https://github.com/soCzech/TransNetV2), MIT; PyTorch port transnetv2-pytorch 1.0.5 (MIT), weights bundled in the wheel. Run in .venv-beat via aikyam_video/ml_worker.py (shot boundaries).
+  * Silero VAD (https://github.com/snakers4/silero-vad), MIT, package silero-vad 6.2.2. Run in .venv-beat via aikyam_video/ml_worker.py (speech segments).

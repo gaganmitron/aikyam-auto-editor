@@ -1,0 +1,15 @@
+{{- if .Values.keda.enabled }}
+{{- range $role := .Values.keda.kafka.scaleRoles }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: {name: {{ $role }}-worker}
+spec:
+  scaleTargetRef: {name: {{ $role }}-worker}
+  minReplicaCount: 1
+  maxReplicaCount: {{ $.Values.keda.kafka.maxReplicas }}
+  triggers:
+    - type: kafka
+      metadata: {bootstrapServers: {{ $.Values.keda.kafka.bootstrapServers }}, consumerGroup: {{ $role }}, topic: {{ $.Values.keda.kafka.topic }}, lagThreshold: "{{ $.Values.keda.kafka.lagThreshold }}"}
+{{- end }}
+{{- end }}

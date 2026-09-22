@@ -1,0 +1,320 @@
+{
+ "note": "Seed catalog for local dev. Replace with the Aikyam Knowledge Graph via AIKYAM_KG_URL / a KG-backed resolver.",
+ "entities": [
+  {
+   "id": "deity_45",
+   "type": "DEITY",
+   "name": "Chamundeshwari",
+   "aliases": [
+    "chamundi",
+    "chamundeshwari",
+    "ಚಾಮುಂಡೇಶ್ವರಿ",
+    "ಚಾಮುಂಡಿ",
+    "चामुंडेश्वरी"
+   ]
+  },
+  {
+   "id": "deity_1",
+   "type": "DEITY",
+   "name": "Ganesha",
+   "aliases": [
+    "ganesha",
+    "ganapati",
+    "ganpati",
+    "vinayaka",
+    "ಗಣೇಶ",
+    "ಗಣಪತಿ",
+    "गणेश",
+    "गणपति"
+   ],
+   "visual": "a statue of Lord Ganesha, the elephant-headed god"
+  },
+  {
+   "id": "deity_2",
+   "type": "DEITY",
+   "name": "Durga",
+   "aliases": [
+    "durga",
+    "ದುರ್ಗಾ",
+    "दुर्गा"
+   ],
+   "visual": "a statue of Goddess Durga with many arms riding a lion"
+  },
+  {
+   "id": "deity_3",
+   "type": "DEITY",
+   "name": "Shiva",
+   "aliases": [
+    "shiva",
+    "shivaya",
+    "mahadeva",
+    "ಶಿವ",
+    "शिव"
+   ],
+   "visual": "a Shiva lingam or a statue of Lord Shiva with a trident"
+  },
+  {
+   "id": "deity_4",
+   "type": "DEITY",
+   "name": "Vishnu",
+   "aliases": [
+    "vishnu",
+    "narayana",
+    "ವಿಷ್ಣು",
+    "विष्णु"
+   ],
+   "visual": "a statue of Lord Vishnu holding a conch and a chakra"
+  },
+  {
+   "id": "ritual_12",
+   "type": "RITUAL",
+   "name": "Aarti",
+   "aliases": [
+    "aarti",
+    "arati",
+    "aarthi",
+    "ಆರತಿ",
+    "आरती"
+   ]
+  },
+  {
+   "id": "ritual_13",
+   "type": "RITUAL",
+   "name": "Abhishekam",
+   "aliases": [
+    "abhishekam",
+    "abhisheka",
+    "abhishek",
+    "ಅಭಿಷೇಕ",
+    "अभिषेक"
+   ]
+  },
+  {
+   "id": "ritual_14",
+   "type": "RITUAL",
+   "name": "Pooja",
+   "aliases": [
+    "pooja",
+    "puja",
+    "ಪೂಜೆ",
+    "पूजा"
+   ]
+  },
+  {
+   "id": "ritual_15",
+   "type": "RITUAL",
+   "name": "Bhajan",
+   "aliases": [
+    "bhajan",
+    "bhajans",
+    "ಭಜನೆ",
+    "भजन"
+   ]
+  },
+  {
+   "id": "ritual_16",
+   "type": "RITUAL",
+   "name": "Procession",
+   "aliases": [
+    "procession",
+    "rathotsava",
+    "ratha",
+    "ಮೆರವಣಿಗೆ",
+    "रथ यात्रा"
+   ]
+  },
+  {
+   "id": "festival_9",
+   "type": "FESTIVAL",
+   "name": "Dasara",
+   "aliases": [
+    "dasara",
+    "dussehra",
+    "dasera",
+    "ದಸರಾ",
+    "दशहरा"
+   ]
+  },
+  {
+   "id": "festival_10",
+   "type": "FESTIVAL",
+   "name": "Navaratri",
+   "aliases": [
+    "navaratri",
+    "navratri",
+    "ನವರಾತ್ರಿ",
+    "नवरात्रि"
+   ]
+  },
+  {
+   "id": "festival_11",
+   "type": "FESTIVAL",
+   "name": "Ganesh Chaturthi",
+   "aliases": [
+    "ganesh chaturthi",
+    "chaturthi",
+    "ಗಣೇಶ ಚತುರ್ಥಿ",
+    "गणेश चतुर्थी"
+   ]
+  },
+  {
+   "id": "temple_123",
+   "type": "TEMPLE",
+   "name": "Chamundeshwari Temple",
+   "aliases": [
+    "chamundeshwari temple",
+    "chamundi hill"
+   ]
+  },
+  {
+   "id": "deity_5",
+   "type": "DEITY",
+   "name": "Hanuman",
+   "aliases": [
+    "hanuman",
+    "hanumanji",
+    "bajrangbali",
+    "ಹನುಮಾನ್",
+    "हनुमान"
+   ],
+   "visual": "a statue of Lord Hanuman, the monkey god"
+  },
+  {
+   "id": "deity_6",
+   "type": "DEITY",
+   "name": "Krishna",
+   "aliases": [
+    "krishna",
+    "krishn",
+    "govinda",
+    "ಕೃಷ್ಣ",
+    "कृष्ण"
+   ],
+   "visual": "a statue of Lord Krishna playing a flute"
+  },
+  {
+   "id": "deity_7",
+   "type": "DEITY",
+   "name": "Lakshmi",
+   "aliases": [
+    "lakshmi",
+    "laxmi",
+    "ಲಕ್ಷ್ಮಿ",
+    "लक्ष्मी"
+   ],
+   "visual": "a statue of Goddess Lakshmi sitting on a lotus"
+  },
+  {
+   "id": "deity_8",
+   "type": "DEITY",
+   "name": "Rama",
+   "aliases": [
+    "rama",
+    "ram",
+    "sri ram",
+    "ರಾಮ",
+    "राम"
+   ],
+   "visual": "a statue of Lord Rama holding a bow"
+  },
+  {
+   "id": "deity_9",
+   "type": "DEITY",
+   "name": "Murugan",
+   "aliases": [
+    "murugan",
+    "kartikeya",
+    "subramanya",
+    "ಸುಬ್ರಹ್ಮಣ್ಯ",
+    "मुरुगन"
+   ],
+   "visual": "a statue of Lord Murugan holding a spear"
+  },
+  {
+   "id": "deity_10",
+   "type": "DEITY",
+   "name": "Venkateswara",
+   "aliases": [
+    "venkateswara",
+    "balaji",
+    "tirupati",
+    "ವೆಂಕಟೇಶ್ವರ",
+    "वेंकटेश्वर"
+   ],
+   "visual": "a statue of Lord Venkateswara Balaji with a tall crown"
+  },
+  {
+   "id": "deity_11",
+   "type": "DEITY",
+   "name": "Jagannath",
+   "aliases": [
+    "jagannath",
+    "jagannatha",
+    "ಜಗನ್ನಾಥ",
+    "जगन्नाथ"
+   ],
+   "visual": "the wooden idol of Lord Jagannath with large round eyes"
+  },
+  {
+   "id": "deity_12",
+   "type": "DEITY",
+   "name": "Saraswati",
+   "aliases": [
+    "saraswati",
+    "ಸರಸ್ವತಿ",
+    "सरस्वती"
+   ],
+   "visual": "a statue of Goddess Saraswati with a veena"
+  },
+  {
+   "id": "festival_12",
+   "type": "FESTIVAL",
+   "name": "Durga Puja",
+   "aliases": [
+    "durga puja",
+    "ದುರ್ಗಾ ಪೂಜೆ",
+    "दुर्गा पूजा"
+   ]
+  },
+  {
+   "id": "festival_13",
+   "type": "FESTIVAL",
+   "name": "Rath Yatra",
+   "aliases": [
+    "rath yatra",
+    "ratha jatra",
+    "ರಥಯಾತ್ರೆ",
+    "रथ यात्रा"
+   ]
+  },
+  {
+   "id": "festival_14",
+   "type": "FESTIVAL",
+   "name": "Mahashivratri",
+   "aliases": [
+    "mahashivratri",
+    "shivaratri",
+    "ಶಿವರಾತ್ರಿ",
+    "महाशिवरात्रि"
+   ]
+  },
+  {
+   "id": "ritual_17",
+   "type": "RITUAL",
+   "name": "Ritual Dance",
+   "aliases": [
+    "theyyam",
+    "kolatam",
+    "garba",
+    "ritual dance",
+    "ತೆಯ್ಯಂ"
+   ]
+  }
+ ],
+ "ritual_labels": {
+  "aarti": "ritual_12",
+  "abhishekam": "ritual_13",
+  "procession": "ritual_16",
+  "ritual_dance": "ritual_17"
+ }
+}

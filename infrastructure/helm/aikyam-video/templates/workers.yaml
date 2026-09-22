@@ -1,0 +1,33 @@
+{{- range $role, $w := .Values.workers }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: {{ $role }}-worker, labels: {app: {{ $role }}-worker, part-of: aikyam-video}}
+spec:
+  replicas: {{ $w.replicas }}
+  selector: {matchLabels: {app: {{ $role }}-worker}}
+  template:
+    metadata:
+      labels: {app: {{ $role }}-worker, part-of: aikyam-video}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9100"}
+    spec:
+      terminationGracePeriodSeconds: 600
+      {{- if $w.gpu }}
+      nodeSelector: {{ toJson $.Values.gpu.nodeSelector }}
+      tolerations: {{ toJson $.Values.gpu.tolerations }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ $.Values.image }}
+          args: ["worker", "--role", "{{ $role }}"]
+          envFrom: [{secretRef: {name: {{ $.Values.secretName }}}}]
+          {{- if $w.gpu }}
+          resources: {{ toJson (mergeOverwrite (deepCopy $w.resources) (dict "limits" (mergeOverwrite (deepCopy $w.resources.limits) (dict "nvidia.com/gpu" $w.gpu)))) }}
+          {{- else }}
+          resources: {{ toJson $w.resources }}
+          {{- end }}
+          {{- if $w.scratch }}
+          volumeMounts: [{name: scratch, mountPath: /work}]
+      volumes: [{name: scratch, emptyDir: {sizeLimit: {{ $w.scratch }}}}]
+          {{- end }}
+{{- end }}

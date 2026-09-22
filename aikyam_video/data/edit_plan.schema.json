@@ -1,0 +1,512 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EditPlan",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "source",
+    "outputFormat",
+    "durationSeconds",
+    "aspectRatio",
+    "segments",
+    "captions",
+    "overlays",
+    "transitions",
+    "audio",
+    "thumbnail"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1,
+        3
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "videoId",
+        "path",
+        "durationSeconds"
+      ],
+      "properties": {
+        "videoId": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "durationSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "templeId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deityId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ritualId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "festivalId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "outputFormat": {
+      "enum": [
+        "REEL",
+        "SQUARE",
+        "LANDSCAPE"
+      ]
+    },
+    "durationSeconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 60
+    },
+    "aspectRatio": {
+      "enum": [
+        "9:16",
+        "1:1",
+        "16:9"
+      ]
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "reason",
+          "score"
+        ],
+        "properties": {
+          "start": {
+            "type": "number",
+            "minimum": 0
+          },
+          "end": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "reason": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "momentId": {
+            "type": "string"
+          },
+          "subjectX": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "subjectPath": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "role": {
+            "enum": [
+              "OPENING",
+              "BUILDUP",
+              "RITUAL",
+              "REVEAL",
+              "CLIMAX",
+              "CLOSING"
+            ]
+          },
+          "shotId": {
+            "type": "string"
+          },
+          "transitionIn": {
+            "type": "object",
+            "required": [
+              "type",
+              "durationSeconds"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "cut",
+                  "crossfade",
+                  "dip_black",
+                  "dip_white",
+                  "fade"
+                ]
+              },
+              "durationSeconds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "layout": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "enum": [
+                  "crop",
+                  "fit_blur"
+                ]
+              },
+              "pushIn": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 0.15
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "liveGainDb": {
+            "type": "number",
+            "minimum": -24,
+            "maximum": 12
+          },
+          "audioLead": {
+            "type": "number",
+            "minimum": -1.5,
+            "maximum": 1.5
+          },
+          "subjectSpread": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "calm": {
+            "type": "boolean"
+          },
+          "assetId": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "video",
+              "image"
+            ]
+          },
+          "motion": {
+            "type": "object",
+            "properties": {
+              "zoom": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 2
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "center": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "easing": {
+                "enum": [
+                  "linear",
+                  "smooth"
+                ]
+              }
+            }
+          },
+          "camera": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "enum": [
+                  "stationary",
+                  "pan",
+                  "track"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "subjectInFrame": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "captions": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "language"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "language": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "sentence",
+            "word"
+          ]
+        },
+        "style": {
+          "type": "object"
+        },
+        "cues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "start",
+              "end",
+              "text"
+            ],
+            "properties": {
+              "pos": {
+                "enum": [
+                  "top",
+                  "bottom"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "overlays": {
+      "type": "object",
+      "properties": {
+        "template": {
+          "enum": [
+            "ritual_highlight",
+            "festival",
+            "divine_moment",
+            "dasara",
+            "navaratri",
+            "ganesh_chaturthi",
+            "durga_puja",
+            "rath_yatra",
+            "mahashivratri"
+          ]
+        },
+        "temple": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deity": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ritual": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "festival": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "transitions": {
+      "type": "object",
+      "required": [
+        "type",
+        "durationSeconds"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "cut",
+            "fade",
+            "crossfade",
+            "dip_black",
+            "dip_white"
+          ]
+        },
+        "durationSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "required": [
+        "preserveOriginal"
+      ],
+      "properties": {
+        "preserveOriginal": {
+          "type": "boolean"
+        },
+        "normalize": {
+          "type": "boolean"
+        },
+        "music": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "trackId": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "thumbnail": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "planner": {
+      "type": "object"
+    },
+    "creative": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "order": {
+          "enum": [
+            "source",
+            "narrative"
+          ]
+        },
+        "profile": {
+          "type": "string"
+        },
+        "arc": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "decisions": {
+          "type": "array"
+        },
+        "music": {
+          "type": "object"
+        },
+        "qc": {
+          "type": "object"
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "path"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,32}$"
+          },
+          "kind": {
+            "enum": [
+              "video",
+              "image",
+              "audio"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "durationSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "hasAudio": {
+            "type": "boolean"
+          },
+          "rights": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
