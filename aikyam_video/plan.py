@@ -187,8 +187,12 @@ def assemble_plan(video_id: str, path: str, duration: float, segments: List[dict
     cues = build_cues(transcript, chosen, caption_mode, edge_overlaps(chosen, trans)) if chosen else []
     temple, deity, ritual, fest = (_pick(entities, t) for t in ("TEMPLE", "DEITY", "RITUAL", "FESTIVAL"))
     from .render import TEMPLATES
-    template = (TEMPLATES.get("_festivalTemplates", {}).get(fest.entityId, "festival") if fest
-                else "ritual_highlight" if (ritual and temple) else "divine_moment")
+    # On-screen text names only what a person told us: upload metadata (temple_id / festival_id) resolves at confidence 1.0, anything a model or the
+    # transcript matched is < 1. Inferred names were wrong on real footage ("Aarti", "Hanuman", "Chamundeshwari"), and a wrong name on a devotional
+    # reel is worse than none. The inferred ids stay in plan["source"] as data; they are never drawn.
+    given = lambda e: e if e is not None and e.confidence >= 1.0 else None
+    shown_temple, shown_fest = given(temple), given(fest)
+    template = TEMPLATES.get("_festivalTemplates", {}).get(shown_fest.entityId, "festival") if shown_fest else "divine_moment"
     ids = lambda e: e.entityId if e else None
     name = lambda e: e.text if e else None
     disp = lambda e: (e.name or e.text) if e else None      # canonical display name, not the matched alias text
@@ -200,16 +204,16 @@ def assemble_plan(video_id: str, path: str, duration: float, segments: List[dict
         "captions": {"enabled": bool(cues), "language": lang, "mode": caption_mode,
                      "style": caption_style or {"fontSize": 0.032, "position": "bottom", "background": True, "animation": "fade"},
                      "cues": cues},
-        "overlays": {"template": template, "temple": disp(temple), "deity": disp(deity), "ritual": disp(ritual),
-                     "festival": disp(fest), "location": location},
+        "overlays": {"template": template, "temple": disp(shown_temple), "deity": None, "ritual": None,
+                     "festival": disp(shown_fest), "location": location},
         "transitions": trans,
         "audio": {"preserveOriginal": True, "normalize": True, "music": {"enabled": False}},
         "thumbnail": {"timestamp": None},
     }
     if title is None and template == "divine_moment":                       # a plain template shows no text: name what is known, invent nothing
-        names = [n for n in (disp(ritual), disp(fest), disp(deity), disp(temple)) if n]
+        names = [n for n in (disp(shown_fest), disp(shown_temple)) if n]
         title = names[0] if names else None
-        subtitle = subtitle or next((n for n in (disp(temple), location) if n and n != title), None)
+        subtitle = subtitle or next((n for n in (disp(shown_temple), location) if n and n != title), None)
     if title:
         plan["overlays"]["title"] = title[:70]
         if subtitle: plan["overlays"]["subtitle"] = subtitle[:70]

@@ -94,6 +94,24 @@ def test_titles_are_named_from_what_is_known_and_nothing_is_invented():
     known = {"TEMPLE": [EntityRef(text="t", name="Kashi Vishwanath Temple", entityType="TEMPLE", entityId="temple_1", confidence=1)],
              "DEITY": [EntityRef(text="s", name="Lord Shiva", entityType="DEITY", entityId="deity_1", confidence=1)]}
     p = assemble_plan("v", "/x", 10.0, seg, tr, Transcript(language="en"), known, location="Varanasi")
-    assert p["overlays"]["title"] == "Lord Shiva" and p["overlays"]["subtitle"] == "Kashi Vishwanath Temple"
+    assert p["overlays"]["title"] == "Kashi Vishwanath Temple" and p["overlays"]["subtitle"] == "Varanasi"      # metadata-only: the temple names the reel; the deity is never drawn
+    assert p["overlays"]["deity"] is None and p["overlays"]["ritual"] is None
     p2 = assemble_plan("v", "/x", 10.0, seg, tr, Transcript(language="en"), {}, location=None); assert "title" not in p2["overlays"]           # unknown footage: no invented title
     p3 = assemble_plan("v", "/x", 10.0, seg, tr, Transcript(language="en"), {}, title="Ganga Aarti", subtitle="Haridwar"); assert p3["overlays"]["title"] == "Ganga Aarti"
+
+
+def test_inferred_names_are_never_drawn_only_upload_metadata_is():
+    """Real footage produced "Aarti" / "Hanuman" / "Chamundeshwari" from vision labels and transcript words. Anything below confidence 1 (not upload metadata) is data only."""
+    from aikyam_video.models import EntityRef, Transcript
+    from aikyam_video.plan import assemble_plan
+    seg = [{"start": 0.0, "end": 5.0, "reason": "x", "score": 0.5}]; tr = {"type": "cut", "durationSeconds": 0}
+    E = lambda typ, name, i, c: EntityRef(text=name, name=name, entityType=typ, entityId=i, confidence=c)
+    inferred = {"RITUAL": [E("RITUAL", "Aarti", "ritual_12", 0.49)], "DEITY": [E("DEITY", "Hanuman", "deity_5", 0.75)],
+                "TEMPLE": [E("TEMPLE", "Some Temple", "temple_9", 0.9)], "FESTIVAL": [E("FESTIVAL", "Dasara", "festival_9", 0.96)]}
+    p = assemble_plan("v", "/x", 10.0, seg, tr, Transcript(language="en"), inferred)
+    ov = p["overlays"]
+    assert ov["template"] == "divine_moment" and "title" not in ov and not any(ov[k] for k in ("temple", "deity", "ritual", "festival"))
+    assert p["source"]["ritualId"] == "ritual_12"                                                       # still recorded as data
+    given = {**inferred, "FESTIVAL": [E("FESTIVAL", "Dasara", "festival_9", 1.0)], "TEMPLE": [E("TEMPLE", "Chamundeshwari Temple", "temple_123", 1.0)]}
+    g = assemble_plan("v", "/x", 10.0, seg, tr, Transcript(language="en"), given)["overlays"]
+    assert g["template"] == "dasara" and g["festival"] == "Dasara" and g["temple"] == "Chamundeshwari Temple" and g["ritual"] is None and g["deity"] is None
