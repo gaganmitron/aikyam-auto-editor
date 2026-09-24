@@ -68,7 +68,7 @@ def pool_similarity(pool: Sequence[Shot], q: float) -> float:
 
 
 def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, source_duration: float, target_s: Optional[float] = None,
-               exclude: Sequence[tuple] = (), avoid: Sequence[Shot] = (), snap=None, max_clips: Optional[int] = None, director=None, notes: Optional[Dict[str, str]] = None, forced_order: Optional[Sequence[str]] = None, edger=None, motion_dedupe: bool = True, hook_first: bool = False) -> Timeline:
+               exclude: Sequence[tuple] = (), avoid: Sequence[Shot] = (), snap=None, max_clips: Optional[int] = None, director=None, notes: Optional[Dict[str, str]] = None, forced_order: Optional[Sequence[str]] = None, edger=None, motion_dedupe: bool = True, hook_first: bool = False, coverage: Optional[float] = None) -> Timeline:
     pool = sorted([s for s in shots if s.slots and not any(_overlap(_win(s), e) > 0.5 or (s.kind == "image" and e[0] == s.asset_id) for e in exclude)], key=lambda s: s.id)
     dec: List[dict] = []
     if not pool:
@@ -108,7 +108,7 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
             pool.append(opener); hook_shot = opener
         beam = [(hook_val, [("OPENING", hook_shot)])]
         dec.append({"type": "hook", "shot": hook_shot.id, "score": round(val("OPENING", hook_shot), 3), "labels": {k: round(v, 2) for k, v in sorted(hook_shot.labels.items(), key=lambda kv: -kv[1])[:3]}})
-    cov_w = S.get("coverage", 0.0)
+    cov_w = S.get("coverage", 0.0) if coverage is None else coverage                       # per-call override (Options.experimental_selection) of the config default
     if cov_w:                                                                                # R[i, j]: how much shot j stands in for shot i, beyond the pool's typical similarity (same transform as `red`)
         ids = {s.id: i for i, s in enumerate(pool)}
         if all(s.embedding for s in pool):
@@ -249,12 +249,12 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
 
 
 def plan_stories(shots: Sequence[Shot], pop: Population, profile: PacingProfile, source_duration: float, k: int = 1, target_s: Optional[float] = None,
-                 snap=None, min_clips: int = 2, director=None, notes=None, order=None, edger=None, motion_dedupe: bool = True, hook_first: bool = False) -> List[Timeline]:
+                 snap=None, min_clips: int = 2, director=None, notes=None, order=None, edger=None, motion_dedupe: bool = True, hook_first: bool = False, coverage: Optional[float] = None) -> List[Timeline]:
     """Up to k different reels from ONE source: each story excludes the footage already used and avoids look-alike shots."""
     out: List[Timeline] = []; used: List[Tuple[float, float]] = []; avoid: List[Shot] = []
     cap = None if k <= 1 else max(2, len([s for s in shots if s.slots]) // k)      # share the footage fairly: reel 1 must not eat the pool
     for _ in range(k):
-        t = plan_story(shots, pop, profile, source_duration, target_s, used, avoid, snap, cap, director, notes, order if not out else None, edger, motion_dedupe, hook_first)
+        t = plan_story(shots, pop, profile, source_duration, target_s, used, avoid, snap, cap, director, notes, order if not out else None, edger, motion_dedupe, hook_first, coverage)
         if len(t.clips) < min_clips and out:
             break
         if not t.clips:

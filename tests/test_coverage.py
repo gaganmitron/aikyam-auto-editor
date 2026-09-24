@@ -43,3 +43,11 @@ def test_coverage_never_rescues_a_pick_that_fails_the_quality_gate(monkeypatch):
     big = plan(pool)[0]
     assert len(big.clips) <= max(len(base.clips) + 2, 6)                       # no explosion of extra clips
     assert [c.role for c in big.clips] == sorted([c.role for c in big.clips], key=lambda r: ["OPENING", "BUILDUP", "RITUAL", "REVEAL", "CLIMAX", "CLOSING"].index(r))
+
+
+def test_per_call_override_matches_the_config_knob(monkeypatch):
+    pool = _pool()
+    via_arg = [(c.role, c.shot.id) for c in story.plan_story(pool, __import__("aikyam_video.creative.shots", fromlist=["Population"]).Population(pool), __import__("aikyam_video.creative.pacing", fromlist=["profile"]).profile("devotional"), 300.0, coverage=0.5).clips]
+    monkeypatch.setitem(story.S, "coverage", 0.5)
+    via_cfg = [(c.role, c.shot.id) for c in plan(pool)[0].clips]
+    assert via_arg == via_cfg
