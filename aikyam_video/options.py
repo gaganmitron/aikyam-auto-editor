@@ -23,6 +23,8 @@ class Options:
     translate: bool = False                   # whisper "translate to English"
     caption_lang: Optional[str] = None
     caption_mode: str = "sentence"            # sentence | word
+    captions: bool = True                     # False (--no-captions): render with no caption overlay at all
+    voiceover: bool = False                   # True (--voiceover): read the captions aloud (espeak-ng TTS), ducked into the mix; creative engine only
     target_seconds: Optional[float] = None    # None: the pacing profile decides (25-40 s); the classic engine falls back to 45
     scoring_config: Optional[str] = None
     formats: List[str] = field(default_factory=lambda: ["reel", "square", "landscape"])
@@ -58,3 +60,6 @@ class Options:
     min_source_seconds: float = 5.0
     max_source_seconds: float = 4 * 3600.0
     on_stage: Optional[Callable[[str], None]] = None
+    long_video_threshold_s: float = 1800.0    # >= this: pipeline.run analyzes in overlapping chunks (chunking.py) instead of decoding the whole file at once
+    chunk_seconds: float = 1200.0             # physical chunk length for long-video analysis
+    chunk_overlap_seconds: float = 60.0       # shared between consecutive chunks, so nothing at a seam is missed
