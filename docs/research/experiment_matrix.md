@@ -1078,3 +1078,33 @@ blended with the prior ranks scenes far better than the devotional-relevance sig
 **Caveat that matters:** the ratings are one rater's (the assistant's) with a rubric that rewards composition and clarity, so agreement with a
 look-quality score is partly built in. It measures consistency with that taste, not what temple audiences prefer. **Next action:** more rated
 frames from more videos, ideally from people who watch these reels, before any learned weighting ships.
+
+## EXP-017 — Silent-source reel on the 11-min Golden Temple video: first run, and why three fixes changed nothing
+
+Run 1 (`--source-audio off --no-captions --music-web`): no recorded voice (level change at the 6 cuts 1.0-7.8 dB vs the track's own median 2.0 dB / 95th pct 7.5 dB:
+no special jump at cuts; measured, not listened to), music = "kRaga1" by KraftiM (CC-BY-3.0, credited), QC warn only. Problems seen: OPENING was a murky interior; colour casts;
+no beat in the track so cuts were not beat-aligned. Fix round 1 (dark-opening penalty, green tint in the colour match, +0.08 beat bonus in music search) -> **run 2 was
+identical** (same clips, music, audio numbers, opening luma 58/71/78/84). Diagnosis: (1) the opening clip was penalised to 0.43 of its score (mean luma 0.19) but still won;
+good openings measure 0.36-0.41, so the ramp was too gentle. (2) tint corrections were tiny (<=0.01): the visible yellow cast is red+green over blue = "warmth", already at
+its 5% cap by design. (3) 2 of 8 downloaded candidates had a tempo (70 and 80 BPM), but the calm pacing profile penalises "rhythmic" music by 0.09, cancelling the 0.08 bonus.
+Fix round 2: opening ramp 0.10@0.14 -> 1.0@0.30; silent-mode beat bonus 0.20. **Lesson:** a green tint axis and a small bonus were guesses; calibrate on the clips in question first.
+Also fixed: `--music-web` used to register third-party tracks into the committed `music/library.json`; they now go to an untracked `music/web/library.json`.
+
+## EXP-018 — Story understanding: what a clip IS, not just what is in it (beats)
+
+**Problem.** The planner rated clips by labels (what is visible). It could not tell an establishing view from a rite, a queue from a procession, so roles were filled by label
+sums (a pilgrim's face became BUILDUP; a langar hall a "prayer"). **Local VLMs were tried first and rejected:** SmolVLM-256M/500M scored 0.40 vs SigLIP 0.69 (EXP-013);
+Moondream 1.8B took ~190 s/frame here and described a praying crowd as "urns of water on a table for ritual purification". Understanding therefore has to come from the image
+model we already run.
+**Built.** `beats.py`: 10 story beats (establishing, approach, ritual_action, offering, procession, prayer, darshan, community, music, detail), action-phrased prompt ensembles,
+softmax across beats -> a DISTRIBUTION per frame -> per scene (`VisionResult.beats`) -> per shot (`Shot.beats`). Used four ways: (1) role fit (`roles.json "beats"`: editorial
+mapping role -> beats, weight 0.25 of a role's affinity); (2) variety (`story.beat_repeat_penalty` 0.15, in the beam AND in the top-up step, which had been re-adding the
+neighbouring beat just to reach the target length -- found by tracing why the penalty had no effect); (3) a pool reserve (`diverse_top`: up to 4 of the 16 pool slots go to the
+best moment of any beat the score ranking would drop -- wide establishing shots score low on devotional relevance and never reached the pool); (4) each plan clip records
+`beat`/`beats`. `--no-beats` restores the old behaviour. Default ON (modest weight, soft distribution); tests in `tests/test_beats.py`.
+**Measured (35 frames, my beat labels, `tools/bench_beats.py`).** Zero-shot 10-way beat accuracy **0.69 top-1 / 0.86 top-2** (comparable to the coarse 8-way 0.69, on a harder task).
+Errors: aarti in front of an idol reads as darshan; praying crowds read as music; 1 of 4 processions. Hence soft distributions, not hard labels.
+**On the real last reel (saved analysis, no run):** beat sequence ritual_action -> approach -> prayer -> procession -> prayer -> procession -> ritual_action = 4 of 10 beats, no
+establishing shot, although 29 of 120 scenes are establishing views. Mis-typed: langar hall -> prayer, chandelier hall -> ritual_action.
+**Not verified:** whether reels actually improve. Beats are stored by the vision stage, so a real run needs a fresh analysis. **Next action:** run the 11-min video, compare beat
+sequences and judge by eye; extend `bench_beats_truth.json` beyond 35 frames.
