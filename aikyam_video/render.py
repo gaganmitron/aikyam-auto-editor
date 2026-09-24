@@ -125,6 +125,9 @@ def render_format(plan: dict, src: str, out_path: str, fmt: str, workdir: str, f
         base = (f"[{k}:v]trim=end={L:.3f},setpts=PTS-STARTPTS" if is_img else f"[{k}:v]trim=start={s['start']}:end={s['end']},setpts=PTS-STARTPTS")
         if info.hdr and not is_img:                    # HDR (HLG / PQ) phone footage: tone-map to SDR BT.709, otherwise it comes out flat and washed out next to SDR clips
             base += "," + TONEMAP
+        if s.get("grade") and not is_img:              # light colour match to the rest of the reel (creative/grade.py)
+            from .creative import grade as _grade
+            if _grade.filter_expr(s["grade"]): base += "," + _grade.filter_expr(s["grade"])
         if lay["mode"] == "fit_blur":       # a (tracked) window of the frame fitted to the width over a blurred, darkened copy of the whole frame
             f = min(1.0, float(lay.get("window", 1.0))); fw = int(round(f * info.width / 2)) * 2
             path = s.get("subjectPath") or []
