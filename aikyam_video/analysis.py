@@ -27,7 +27,8 @@ def _merge(rs: List[VisionResult]) -> VisionResult:
         e = np.mean(embs, axis=0); emb = (e / np.linalg.norm(e)).tolist()
     return VisionResult(labels=labels, faces=faces, saliency_x=xs[n // 2],
                         brightness=sum(r.brightness for r in rs) / n, sharpness=sum(r.sharpness for r in rs) / n,
-                        provider=rs[0].provider, moderation=mod, deities=deities, embedding=emb)
+                        provider=rs[0].provider, moderation=mod, deities=deities, embedding=emb,
+                        aesthetic=(sum(r.aesthetic for r in rs) / n) if all(r.aesthetic is not None for r in rs) else None)
 
 
 def analyze_scenes(path: str, scenes: List[Scene], vision: VisionProvider, samples: int = 3) -> List[SceneVision]:

@@ -6,7 +6,9 @@
    "abhishekam",
    "procession",
    "ritual_dance",
-   "fireworks"
+   "fireworks",
+   "ritual_hands",
+   "offerings"
   ],
   "devotion": [
    "deity",
@@ -14,16 +16,25 @@
    "priest",
    "devotees",
    "lamps",
-   "flowers"
+   "flowers",
+   "sanctum_view",
+   "incense_smoke",
+   "temple_bell",
+   "devotees_walking",
+   "food_service"
   ],
   "setting": [
    "temple_architecture",
    "decorations",
-   "crowd"
+   "crowd",
+   "architectural_detail",
+   "temple_tank",
+   "temple_night"
   ],
   "deity": [
    "deity",
-   "idol"
+   "idol",
+   "sanctum_view"
   ]
  },
  "audio_peak_events": [
@@ -96,6 +107,7 @@
   "chronology_bonus_multi_asset": 0.12,
   "skip_penalty": 0.25,
   "beam": 48,
-  "min_affinity_percentile": 35
+  "min_affinity_percentile": 35,
+  "coverage": 0.0
  }
 }

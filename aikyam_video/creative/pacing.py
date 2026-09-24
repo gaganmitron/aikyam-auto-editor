@@ -9,7 +9,7 @@ from .model import Shot
 
 _DATA = json.loads((Path(__file__).parent.parent / "data" / "pacing.json").read_text())
 FESTIVE = {"procession", "ritual_dance", "fireworks", "crowd", "decorations"}
-CALM = {"deity", "idol", "priest", "abhishekam", "aarti", "lamps", "devotees"}
+CALM = {"deity", "idol", "priest", "abhishekam", "aarti", "lamps", "devotees", "incense_smoke", "offerings", "sanctum_view", "ritual_hands"}
 
 
 @dataclass(frozen=True)

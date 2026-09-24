@@ -8,9 +8,12 @@ import numpy as np
 DEFAULT_WEIGHTS: Dict[str, float] = {
     "visualImportance": 0.25, "devotionalRelevance": 0.20, "audioImportance": 0.15,
     "semanticImportance": 0.15, "novelty": 0.10, "completeness": 0.10, "temporalImportance": 0.05,
+    "aesthetic": 0.0,   # EXP-012: opt-in until measured end to end
 }
 DEVOTIONAL = {"deity": 1.0, "idol": 0.9, "aarti": 1.0, "abhishekam": 1.0, "priest": 0.7, "procession": 0.8,
-              "lamps": 0.7, "flowers": 0.5, "devotees": 0.5, "temple_architecture": 0.4, "decorations": 0.4, "crowd": 0.4}
+              "lamps": 0.7, "flowers": 0.5, "devotees": 0.5, "temple_architecture": 0.4, "decorations": 0.4, "crowd": 0.4,
+              "sanctum_view": 0.8, "ritual_hands": 0.7, "offerings": 0.5, "incense_smoke": 0.5, "temple_bell": 0.5,
+              "devotees_walking": 0.5, "food_service": 0.5, "architectural_detail": 0.4, "temple_tank": 0.4, "temple_night": 0.4}
 
 Scorer = Callable[[object, float, float], float]   # (ctx, start, end) -> 0..1
 SCORERS: Dict[str, Scorer] = {}
@@ -47,6 +50,20 @@ def visual(ctx, a, b):
         clarity = v.sharpness * (1 - abs(v.brightness - 0.5) * 1.2)
         vals.append(0.4 * face + 0.25 * light + 0.35 * max(0.0, clarity))
     return float(np.clip(max(vals), 0, 1))
+
+
+@scorer("aesthetic")
+def aesthetic(ctx, a, b):
+    """Look quality of the window: overlap-weighted WITHIN-VIDEO percentile of its scenes' zero-shot aesthetic score (percentile, because only the
+    ordering inside one video is meaningful -- tools/bench_labels.py). Neutral 0.5 with no image-text model or fewer than 3 scenes."""
+    raw = [sv.vision.aesthetic for sv in ctx.vision]
+    if len(raw) < 3 or any(r is None for r in raw):
+        return 0.5
+    rank = getattr(ctx, "_aes_rank", None)
+    if rank is None:
+        arr = np.asarray(raw); rank = ctx._aes_rank = [float(((arr < v).sum() + 0.5 * (arr == v).sum()) / len(arr)) for v in arr]
+    w = [(rank[i], min(b, sv.end) - max(a, sv.start)) for i, sv in enumerate(ctx.vision) if sv.end > a and sv.start < b]
+    return float(sum(r * o for r, o in w) / sum(o for _, o in w)) if w else 0.5
 
 
 @scorer("devotionalRelevance")

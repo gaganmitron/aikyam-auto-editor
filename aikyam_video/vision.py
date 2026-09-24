@@ -33,6 +33,17 @@ LABEL_PROMPTS: Dict[str, List[str]] = {
                      "people dancing in a religious festival"],
     "crowd": ["a large crowd of people gathered", "a packed temple crowd"],
     "decorations": ["temple decorated with festival lights and flower garlands", "colourful festival decorations", "a photo of festival decorations"],
+    # shots a temple videographer routinely takes (docs/research: EXP-012 coverage review) that the labels above did not name
+    "incense_smoke": ["incense smoke rising in front of a temple deity", "smoke from agarbatti and camphor in a temple"],
+    "offerings": ["a puja thali with fruits, coconut and flowers as offerings", "prasad and offerings placed before a deity"],
+    "temple_bell": ["large brass temple bells hanging at a temple entrance", "a devotee ringing a temple bell"],
+    "ritual_hands": ["close-up of a priest applying tilak on a devotee's forehead", "close-up of hands offering flowers or lighting a lamp in a temple", "hands folded in prayer close-up"],
+    "sanctum_view": ["a deity idol seen through a temple doorway in a dim sanctum", "darshan of a deity framed by a temple doorway"],
+    "devotees_walking": ["devotees walking around a temple in circumambulation", "a queue of devotees entering a temple for darshan", "a devotee prostrating in prayer"],
+    "food_service": ["devotees being served prasadam food in a temple hall", "a community meal with people sitting in rows being served food"],
+    "architectural_detail": ["a close-up of carved stone temple pillars and sculptures", "an ornate carved temple doorway"],
+    "temple_tank": ["a temple tank pond with steps and the temple reflected in the water"],
+    "temple_night": ["a temple lit up with lights at night", "an illuminated temple gopuram at night"],
 }
 NEGATIVES: List[str] = [
     "a photo of an ordinary room", "a photo of a street with cars", "a photo of a person's face", "a landscape photo",
@@ -40,6 +51,9 @@ NEGATIVES: List[str] = [
     "a photo of a building exterior", "a screenshot with text", "a photo of a wall",
 ]
 KEEP = 0.2   # minimum reported confidence
+# CLIP-IQA-style antonym pairs (EXP-012, tools/bench_clips.py): score = logit(good) - logit(bad); within-video rho with reel-worthiness +0.52 / +0.85 / +0.79 on 3 videos
+AESTHETIC_PAIRS = [("a high quality, beautiful, well composed photo", "a low quality, ugly, badly composed photo"),
+                   ("a striking cinematic photo of a temple ritual", "a boring, cluttered snapshot")]
 
 # Content moderation (zero-shot, conservative): a clip whose scene scores >= MODERATION_BLOCK is rejected by validation.
 MODERATION_PROMPTS: Dict[str, List[str]] = {
@@ -132,6 +146,7 @@ class ClipVision(VisionProvider, EmbeddingProvider):
         # SigLIP-style models carry a learned bias: sigmoid(scale*cos+bias) is a per-label probability.
         self.sigmoid = hasattr(self.model, "logit_bias")
         self._neg = self.embed_text(NEGATIVES)
+        self._aes = self.embed_text([t for pair in AESTHETIC_PAIRS for t in pair])
         self.labels = _PromptGroup(self, LABEL_PROMPTS)
         self.moderation = _PromptGroup(self, MODERATION_PROMPTS)
         kg = json.load(open(kg_path or SEED, encoding="utf-8"))
@@ -171,6 +186,8 @@ class ClipVision(VisionProvider, EmbeddingProvider):
         d = sorted(self.deities.score(self, emb).items(), key=lambda kv: -kv[1])
         if d and d[0][1] >= DEITY_MIN and (len(d) < 2 or d[0][1] - d[1][1] >= DEITY_MARGIN):
             base.deities = {d[0][0]: d[0][1]}
+        lg = float(self.model.logit_scale.exp()) * (self._aes @ emb)                  # bias cancels in a pos-neg difference
+        base.aesthetic = float(np.mean(lg[0::2] - lg[1::2]))
         base.embedding, base.provider = emb.tolist(), self.name
         return base
 

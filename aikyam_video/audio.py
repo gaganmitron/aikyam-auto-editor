@@ -112,8 +112,8 @@ SOUND_PROMPTS: Dict[str, list] = {
     "bell": ["a temple bell ringing", "a hand bell being rung"],
     "conch": ["a conch shell being blown", "a shankh blowing sound"],
     "chant": ["people chanting mantras in unison", "a priest reciting Sanskrit shlokas"],
-    "bhajan": ["devotional singing with harmonium and tabla", "a group singing bhajans with instruments"],
-    "drums": ["loud drumming, dhol and nagara drums"],
+    "bhajan": ["devotional singing with harmonium and tabla", "a group singing bhajans with instruments", "kirtan devotional singing with harmonium at a gurdwara", "a nadaswaram temple oboe playing"],
+    "drums": ["loud drumming, dhol and nagara drums", "thavil and chenda temple percussion"],
     "applause": ["a crowd clapping and cheering"],
     "speech": ["a person speaking"],
 }

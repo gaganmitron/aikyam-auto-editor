@@ -41,6 +41,7 @@ class VisionResult(BaseModel):
     provider: str = ""
     moderation: Dict[str, float] = Field(default_factory=dict)   # unsafe-content label -> confidence
     deities: Dict[str, float] = Field(default_factory=dict)      # KG deityId -> zero-shot confidence (visual guess)
+    aesthetic: Optional[float] = None                            # zero-shot look quality (CLIP-IQA-style antonym prompts, raw logit difference); None without an image-text model
     embedding: Optional[List[float]] = Field(default=None, exclude=True)  # image embedding; stored separately
 
 
