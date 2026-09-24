@@ -5,6 +5,7 @@ Objective for a sequence of (role, shot) pairs in arc order:
   - redundancy_penalty * sum( max(0, sim(i, j) - s0) )                       near-duplicate shots waste the reel (s0 = pool's 75th percentile similarity)
   - skip_penalty * importance(role)  for every role left out                 a story without its reveal/climax is weaker
   + chronology_bonus * (fraction of consecutive pairs in source order)       temple rituals have a natural order; break it only when it pays
+  + coverage * (gain in how well the picked shots stand in for the WHOLE pool)  facility-location coverage; opt-in (0 = off), EXP-014
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -107,11 +108,22 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
             pool.append(opener); hook_shot = opener
         beam = [(hook_val, [("OPENING", hook_shot)])]
         dec.append({"type": "hook", "shot": hook_shot.id, "score": round(val("OPENING", hook_shot), 3), "labels": {k: round(v, 2) for k, v in sorted(hook_shot.labels.items(), key=lambda kv: -kv[1])[:3]}})
+    cov_w = S.get("coverage", 0.0)
+    if cov_w:                                                                                # R[i, j]: how much shot j stands in for shot i, beyond the pool's typical similarity (same transform as `red`)
+        ids = {s.id: i for i, s in enumerate(pool)}
+        if all(s.embedding for s in pool):
+            Emb = np.array([s.embedding for s in pool], float); R = np.maximum(0.0, Emb @ Emb.T - s0) / max(1.0 - s0, 1e-6)
+        else:
+            R = np.array([[red(a, b) for b in pool] for a in pool])
+        Wt = np.array([max(s.length, 1e-3) * max(s.score, 1e-3) for s in pool]); Wt = Wt / Wt.sum()      # long, well-scored footage counts more
     for ri, role in enumerate(ROLES):
         if hook_shot is not None and role == "OPENING":
             continue
         nxt = []
         for score, chosen in beam:
+            if cov_w:
+                have = [ids[c.id] for _, c in chosen if c.id in ids]
+                cur = R[:, have].max(axis=1) if have else np.zeros(len(pool))
             nxt.append((score - S["skip_penalty"] * CFG["importance"][role], chosen))       # any role may be skipped (thin pools): the skip penalty and the clip-count preference do the steering
             if len(chosen) >= n_hi:
                 continue
@@ -130,6 +142,8 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
                         inc += S["chronology_bonus"] if s.start > prev_same.start else -S["chronology_bonus"]
                     elif s.start > prev_same.start:                                           # multi-asset: byte-identical to the pre-EXP-001 original -- forward-only, divided by n_t, its own pinned constant (not coupled to the single-asset value)
                         inc += S["chronology_bonus_multi_asset"] / max(n_t, 1)
+                if cov_w and s.id in ids:                                                    # after the quality gate, like chronology: ranks candidates that already clear the bar, never rescues one that doesn't
+                    inc += cov_w * float((Wt * np.maximum(R[:, ids[s.id]] - cur, 0.0)).sum())
                 nxt.append((score + inc, chosen + [(role, s)]))
         nxt.sort(key=lambda x: (-round(x[0], 9), tuple(s.id for _, s in x[1])))
         beam = nxt[:S["beam"]]
@@ -213,18 +227,22 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
     #      repeats of the movement allowed, and say so in the plan.
     est_ov = profile.base_blend * (1 - profile.cut_bias)
     total = lambda cs: sum(c.length for c in cs) - est_ov * max(0, len(cs) - 1)
-    floor = max(MIN_REEL_S, target_s - 2.0) if target_s else MIN_REEL_S                   # an explicit length is a promise: the six roles alone cannot fill 45 s, so the middle of the arc may repeat
-    if forced_order is None and not directed and total(clips) < floor:
+    floor = max(MIN_REEL_S, T - 2.0)                                                      # defend the REAL target (explicit, or the pacing profile's own pick) -- the six roles alone cannot fill it, so the middle of the arc may repeat
+    if forced_order is None and not directed:
         used = {c.shot.id for c in clips}
-        for cand in sorted([x for x in pool if x.id not in used and x.kind == "video" and not any(_clash(x, c.shot) for c in clips)], key=lambda x: (-val_any(x), x.id)):
-            if total(clips) >= floor:
+        free_pool = lambda: [x for x in pool if x.id not in used and x.kind == "video" and not any(_clash(x, c.shot) for c in clips)]
+        while total(clips) < floor:
+            cands = free_pool()
+            if not cands:
                 break
-            free = [r for r in ROLES if r not in {c.role for c in clips}] or (list(REPEAT) if target_s else [])
-            if not free or len(clips) >= (9 if target_s else 7):
+            fresh = [x for x in cands if not any(is_duplicate(x, c.shot, motion_dedupe) for c in clips)]     # prefer footage that isn't a near-duplicate of anything already picked
+            cand = max(fresh or cands, key=lambda x: (val_any(x), x.id))                                    # only reach for a duplicate (repeat) when nothing fresh is left
+            free = [r for r in ROLES if r not in {c.role for c in clips}] or list(REPEAT)
+            if not free or len(clips) >= min(9 if target_s else 7, max_clips or 99):
                 break
             role = max(free, key=lambda r: aff[cand.id][r]); L2 = float(min(profile.max_shot, cand.length, max(profile.min_shot, floor - total(clips) + est_ov)))
             a2, b2, q2 = best_window(cand, pop, L2, snap); before = total(clips)
-            clips.append(Clip(cand, a2, b2, role, why=f"fill: the reel was {before:.1f}s, under {floor:.0f}s"))
+            clips.append(Clip(cand, a2, b2, role, why=f"fill: the reel was {before:.1f}s, under {floor:.0f}s")); used.add(cand.id)
             clips.sort(key=lambda c: ROLES.index(c.role)); dec.append({"type": "fill", "shot": cand.id, "role": role, "seconds": round(b2 - a2, 1), "why": f"reel would be {before:.1f}s, under {floor:.0f}s"})
     asc = len({c.shot.asset_id for c in clips}) == 1 and all(clips[k].start < clips[k + 1].start for k in range(len(clips) - 1))
     return Timeline(clips, profile.name, [c.role for c in clips], "source" if asc else "narrative", dec, float(best_score), {"sim_floor": s0, "T": T})
