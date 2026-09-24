@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 from .. import ffmpeg as ff, measure as M
 from ..safezone import PORTRAIT, glyphs, zones
-from ..plan import edge_transitions, timeline
+from ..plan import edge_transitions, seg_source, timeline
 
 TARGET_LUFS, LUFS_TOL = -16.0, 1.5
 TP_LIMIT, MAX_CPS = -1.0, 20.0
@@ -188,6 +188,33 @@ _DEVOTION_ANCHOR_LABELS = ("deity", "idol", "priest", "devotees", "lamps", "flow
 _DEVOTIONAL_REASONS = {"deity", "idol", "priest", "devotees", "lamps", "flowers", "aarti", "abhishekam", "procession"}
 
 
+def _vlm_second_opinion(frame_path: str) -> Optional[str]:
+    """EXP-011 (docs/research/experiment_matrix.md): a local VLM (Ollama/Moondream, Apache-2.0),
+    asked one-word, correctly resolved all 9/9 real cases tested -- including the exact Diwali
+    scenes the embedding check above exists to flag. Opt-in (AIKYAM_VLM_VERIFY=1), OFF by
+    default: ~195s/frame measured on a modest CPU, and it needs Ollama actually running, neither
+    of which any other check in this file requires. Returns 'devotion' / 'fireworks' / None
+    (disabled, or ANY failure -- service down, model not pulled, timeout: this is a second
+    opinion, never a reason to fail or slow down a render by default)."""
+    if os.environ.get("AIKYAM_VLM_VERIFY") != "1":
+        return None
+    import base64, requests
+    try:
+        b64 = base64.b64encode(open(frame_path, "rb").read()).decode()
+        url = os.environ.get("AIKYAM_OLLAMA_URL", "http://localhost:11434")
+        model = os.environ.get("AIKYAM_VLM_MODEL", "moondream")
+        timeout = float(os.environ.get("AIKYAM_VLM_TIMEOUT", "300"))
+        r = requests.post(f"{url}/api/generate", json={
+            "model": model, "images": [b64], "stream": False, "options": {"num_predict": 12, "num_ctx": 512},
+            "prompt": "One word: is this 'ritual' (a shrine/deity/puja/aarti) or 'fireworks'?",
+        }, timeout=timeout)
+        r.raise_for_status()
+        ans = r.json().get("response", "").lower()
+        return "devotion" if "ritual" in ans else "fireworks" if "fireworks" in ans else None
+    except Exception:                                     # noqa: BLE001 -- best-effort second opinion, never fail the render over it
+        return None
+
+
 def check_role_label_consistency(plan: dict, workdir: str, margin: float = 0.02) -> List[Check]:
     """EXP-010 (docs/research/experiment_matrix.md): a clip labeled devotional content should
     look more like this source's OWN clearest devotional footage than its clearest fireworks
@@ -232,14 +259,37 @@ def check_role_label_consistency(plan: dict, workdir: str, margin: float = 0.02)
         sim_dev, sim_fw = float(own @ dev_anchor), float(own @ fw_anchor)
         got_class = "devotion" if sim_dev > sim_fw else "fireworks"
         if got_class != expected and abs(sim_dev - sim_fw) >= margin:
-            flags.append((i, s["start"], reason, got_class, sim_dev, sim_fw))
+            flags.append([i, s["start"], reason, got_class, sim_dev, sim_fw, False])   # last field: VLM-confirmed?
+
+    if flags and os.environ.get("AIKYAM_VLM_VERIFY") == "1":
+        import tempfile
+        segs = plan.get("segments", [])
+        for flag in flags:
+            i = flag[0]; seg = segs[i]
+            src = seg_source(plan, seg, plan.get("source", {}).get("path"))
+            if not src:
+                continue
+            with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp:
+                try:
+                    ff.frame_at(src, (seg["start"] + seg["end"]) / 2, tmp.name)
+                    verdict = _vlm_second_opinion(tmp.name)
+                except Exception:             # noqa: BLE001 -- frame extraction failure: keep the embedding-only flag, never fail the render
+                    verdict = None
+            flag_expected = "devotion" if flag[2] in _DEVOTIONAL_REASONS else "fireworks"
+            if verdict == flag_expected:
+                flag[6] = "drop"               # VLM sides with the original label: the embedding flag was the false positive here
+            elif verdict is not None:
+                flag[6] = True                 # VLM agrees the label is wrong: upgrade confidence in the flag
+        flags = [f for f in flags if f[6] != "drop"]
+
     if not flags:
         return [_ok("role_label_consistency")]
-    i0, t0, r0, got0, sd0, sf0 = flags[0]
+    i0, t0, r0, got0, sd0, sf0, vlm0 = flags[0]
+    vlm_note = " -- VLM confirms" if vlm0 is True else ""
     return [Check("role_label_consistency", "warn", len(flags), 0, [t for _, t, *_ in flags], i0,
-                  f"clip {i0} is labeled {r0!r} (devotional) but its embedding looks more like this source's own {got0} footage (sim {sd0:.2f} vs {sf0:.2f})"
+                  f"clip {i0} is labeled {r0!r} (devotional) but its embedding looks more like this source's own {got0} footage (sim {sd0:.2f} vs {sf0:.2f}){vlm_note}"
                   if r0 in _DEVOTIONAL_REASONS else
-                  f"clip {i0} is labeled fireworks but its embedding looks more like this source's own devotional footage (sim {sd0:.2f} vs {sf0:.2f})")]
+                  f"clip {i0} is labeled fireworks but its embedding looks more like this source's own devotional footage (sim {sd0:.2f} vs {sf0:.2f}){vlm_note}")]
 
 
 def check_crop(plan: dict, video: str, tl: List[dict]) -> List[Check]:
