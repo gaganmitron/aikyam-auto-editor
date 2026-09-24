@@ -37,22 +37,29 @@ def run(path: str, out: str, upto: str = "process", o: Optional[Options] = None,
     plan = None
     try:
         with timed(METRICS.media_processing):
-            stage("transcription")
-            with timed(METRICS.transcription):
-                stages.transcription(path, out, o)
-            stage("scene_detection")
-            with timed(METRICS.scene_detection):
-                stages.scene_analysis(path, out, o)
+            if info.duration >= o.long_video_threshold_s:
+                # long source: analyze in overlapping chunks (chunking.py) instead of decoding the
+                # whole file at once -- produces the SAME artifacts in `out/` a normal run would, so
+                # everything below (unchanged) never needs to know chunking happened.
+                from . import chunking
+                stage("chunked_analysis")
+                with timed(METRICS.transcription), timed(METRICS.scene_detection), timed(METRICS.highlight_generation):
+                    chunking.run_chunked(path, out, o, log, info.duration)
+            else:
+                stage("transcription")
+                with timed(METRICS.transcription):
+                    stages.transcription(path, out, o)
+                stage("scene_detection")
+                with timed(METRICS.scene_detection):
+                    stages.scene_analysis(path, out, o)
+                stage("highlights")
+                with timed(METRICS.highlight_generation):
+                    stages.highlights(path, out, o)
             for k, n in [("transcript", stages.TRANSCRIPT), ("scenes", stages.SCENES)]:
                 files[k] = os.path.join(out, n)
             if upto == "analyze":
-                with timed(METRICS.highlight_generation):   # entities need both; cheap
-                    stages.highlights(path, out, o)
                 files["entities"] = os.path.join(out, stages.ENTITIES)
                 return files
-            stage("highlights")
-            with timed(METRICS.highlight_generation):
-                stages.highlights(path, out, o)
             files.update(entities=os.path.join(out, stages.ENTITIES), moments=os.path.join(out, stages.MOMENTS))
             if upto == "highlights":
                 return files
