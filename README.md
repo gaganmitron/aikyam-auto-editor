@@ -38,12 +38,18 @@ aikyam-video analyze|highlights|plan|render|process INPUT... [-o DIR] [--format 
    [--engine creative|classic] [--pacing contemplative|devotional|festive] [--opening hook|establish] [--hook-first]
    [--order v3,v1,i2] [--title "..."] [--subtitle "..."] [--reels N] [--variants N] [--allow-silent]
    [--no-qc] [--qc-attempts 2] [--no-edge-snap] [--no-motion-dedupe] [--scoring-config weights.json]
+   [--source-audio keep|off] [--no-captions] [--voiceover] [--no-color-match] [--experimental-selection] [--vision-model hf-hub:timm/ViT-B-16-SigLIP-256]
 aikyam-video live SOURCE [--chunk 60 --overlap 10 --min-score 0.4 --no-render]   # rolling highlights from a stream/file
 aikyam-video serve                       # Media API            aikyam-video worker --role orchestrator|intelligence|highlight|planner|render
 python -m aikyam_video.ui                # small web UI (upload, arrange, render) -- separate module, not a CLI subcommand
 ```
 `process` is the only command that accepts several inputs at once, mixing video/image/audio (see `--order` above).
 `--engine classic` uses the older greedy score-ordered planner instead of the Creative Engine (section 4).
+`--source-audio off` drops the recorded sound entirely (no narration cut at transitions): cuts follow the picture and the music, and music is always added
+(creative engine; pair with `--music-web` or `--music-file` for real tracks -- the built-in ones are synthesised placeholders). `--no-captions` removes the caption
+overlay; `--voiceover` reads the captions aloud with offline TTS (robotic; off by default); clips are colour-matched to each other unless `--no-color-match`.
+Opening titles show only upload metadata (temple/festival ids), never an inferred ritual or deity name. `--experimental-selection` adds look-quality, the
+learned ranker (needs a fitted artifact, none ships) and coverage terms to clip choice -- see docs/research EXP-012/014/016 for how weak the evidence still is.
 
 ## 2. Run the full stack (Docker Compose: Postgres, MinIO, Redpanda/Kafka, API, 5 workers)
 ```bash

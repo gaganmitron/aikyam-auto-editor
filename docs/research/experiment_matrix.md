@@ -1056,3 +1056,25 @@ that doesn't). **Default 0 = off.** Tests: `tests/test_coverage.py` (synthetic 1
 
 **Conclusion.** Built as an opt-in knob; NOT evidence that reels improve. **Next action:** A/B two real reels (coverage 0 vs ~0.5) once
 the pipeline is cleared to run, and judge by eye. Do not enable by default before that.
+
+## EXP-015 — Which image-text model? (open_clip variants, same 35-frame benchmark)
+
+`tools/bench_models.py`. Within-video label AP | best single-threshold F1 | 8-way scene-type accuracy | aesthetic-prior rho | CPU s/frame.
+ViT-B-16-SigLIP (current, 224): 0.846 | 0.58 | 0.69 | +0.57 | 0.26 s.  B-16-256: 0.848 | 0.59 | **0.74** | **+0.69** | 0.33 s.
+B-16-384: **0.874** | 0.55 | **0.77** | +0.53 | 0.76 s.  B-16-i18n-256 (multilingual, 371M): 0.834 | 0.54 | 0.66 | +0.52 | 0.33 s.
+L-16-256 (652M): **0.888** | 0.56 | 0.66 | +0.43 | 1.11 s.  SigLIP2 is not available in the pinned open_clip 2.29 / transformers 4.46.
+**Conclusion.** No clear winner; bigger and multilingual are NOT better at scene types or look quality. B-16-256 is a small, consistent gain for
++27% time (within noise at n=35). Default unchanged; switchable via `VISION_MODEL` or `--vision-model`. Anything fitted on one model (ranker.py)
+records `vision_model` and is ignored under another. **Next action:** re-test B-16-256 on the enlarged benchmark before changing the default.
+
+## EXP-016 — Learned clip ranker (prior-regularised ridge over per-scene features), validated by holding out whole videos
+
+`aikyam_video/ranker.py`, `tools/fit_ranker.py`, scorer `learned` (default weight 0, needs data/ranker.json). Features: aesthetic, no-text, devotional
+relevance, sharpness, exposure, face area. Mean within-video Spearman vs. rating, leave-one-VIDEO-out (golden / janakpur / kolkata):
+prior weights, no data **+0.71** (+0.49/+0.85/+0.79); aesthetic only **+0.72**; **devotional relevance only +0.36 (+0.01/+0.77/+0.29)**;
+learned lam=1..64: +0.60 / +0.63 / +0.67 / +0.68. **The learned fit is worse than its own prior**, so per the ship gate NO artifact was written
+(the scorer stays neutral). With ~35 rated frames a data-fitted model has nothing to add. What the run DID show: on this benchmark, look-quality
+blended with the prior ranks scenes far better than the devotional-relevance signal the pipeline leans on most.
+**Caveat that matters:** the ratings are one rater's (the assistant's) with a rubric that rewards composition and clarity, so agreement with a
+look-quality score is partly built in. It measures consistency with that taste, not what temple audiences prefer. **Next action:** more rated
+frames from more videos, ideally from people who watch these reels, before any learned weighting ships.
