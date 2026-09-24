@@ -9,6 +9,7 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
     "visualImportance": 0.25, "devotionalRelevance": 0.20, "audioImportance": 0.15,
     "semanticImportance": 0.15, "novelty": 0.10, "completeness": 0.10, "temporalImportance": 0.05,
     "aesthetic": 0.0,   # EXP-012: opt-in until measured end to end
+    "learned": 0.0,     # EXP-016: learned clip ranker (ranker.py); opt-in
 }
 DEVOTIONAL = {"deity": 1.0, "idol": 0.9, "aarti": 1.0, "abhishekam": 1.0, "priest": 0.7, "procession": 0.8,
               "lamps": 0.7, "flowers": 0.5, "devotees": 0.5, "temple_architecture": 0.4, "decorations": 0.4, "crowd": 0.4,
@@ -62,6 +63,28 @@ def aesthetic(ctx, a, b):
     rank = getattr(ctx, "_aes_rank", None)
     if rank is None:
         arr = np.asarray(raw); rank = ctx._aes_rank = [float(((arr < v).sum() + 0.5 * (arr == v).sum()) / len(arr)) for v in arr]
+    w = [(rank[i], min(b, sv.end) - max(a, sv.start)) for i, sv in enumerate(ctx.vision) if sv.end > a and sv.start < b]
+    return float(sum(r * o for r, o in w) / sum(o for _, o in w)) if w else 0.5
+
+
+@scorer("learned")
+def learned(ctx, a, b):
+    """Learned reel-worthiness (ranker.py) of the window: overlap-weighted WITHIN-VIDEO percentile of its scenes' ranker scores. Neutral 0.5 when there is no fitted
+    ranker artifact, no image-text model, or fewer than 3 scenes."""
+    from . import ranker
+    rk = getattr(ctx, "_ranker", False)
+    if rk is False:
+        rk = ctx._ranker = ranker.load()
+    if rk is not None and rk.meta.get("vision_model") not in (None, __import__("aikyam_video.vision", fromlist=["model_name"]).model_name()):
+        rk = ctx._ranker = None                                              # fitted on another image-text model: its numbers mean something else here
+    if rk is None or len(ctx.vision) < 3:
+        return 0.5
+    rank = getattr(ctx, "_learned_rank", None)
+    if rank is None:
+        xs = [ranker.featurize(sv.vision) for sv in ctx.vision]
+        if any(x is None for x in xs):
+            return 0.5
+        raw = np.array([rk.raw(x) for x in xs]); rank = ctx._learned_rank = [float(((raw < v).sum() + 0.5 * (raw == v).sum()) / len(raw)) for v in raw]
     w = [(rank[i], min(b, sv.end) - max(a, sv.start)) for i, sv in enumerate(ctx.vision) if sv.end > a and sv.start < b]
     return float(sum(r * o for r, o in w) / sum(o for _, o in w)) if w else 0.5
 

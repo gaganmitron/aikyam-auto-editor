@@ -52,6 +52,7 @@ NEGATIVES: List[str] = [
 ]
 KEEP = 0.2   # minimum reported confidence
 # CLIP-IQA-style antonym pairs (EXP-012, tools/bench_clips.py): score = logit(good) - logit(bad); within-video rho with reel-worthiness +0.52 / +0.85 / +0.79 on 3 videos
+NO_TEXT_PAIR = ("a photo with no text", "a screenshot with subtitles, credits and text overlay")      # EXP-012: rho +0.21 with reel-worthiness; credits/title cards are never reel material
 AESTHETIC_PAIRS = [("a high quality, beautiful, well composed photo", "a low quality, ugly, badly composed photo"),
                    ("a striking cinematic photo of a temple ritual", "a boring, cluttered snapshot")]
 
@@ -61,6 +62,14 @@ MODERATION_PROMPTS: Dict[str, List[str]] = {
     "graphic_violence": ["a photo of graphic violence with blood and injuries", "a dead body or gore"],
     "weapons_violence": ["a person attacking another person with a weapon", "a violent riot with fighting"],
 }
+DEFAULT_MODEL = "hf-hub:timm/ViT-B-16-SigLIP"
+
+
+def model_name() -> str:
+    """The image-text model in use: VISION_MODEL, else the default. Scores that were FITTED on one model (ranker.py) are only valid for that model."""
+    return os.environ.get("VISION_MODEL", DEFAULT_MODEL)
+
+
 MODERATION_BLOCK = float(os.environ.get("MODERATION_BLOCK", "0.6"))
 # Visual deity guesses come from the KG (`visual` prompt per deity). Report only a clear winner.
 DEITY_MIN, DEITY_MARGIN = 0.5, 0.15
@@ -140,13 +149,13 @@ class ClipVision(VisionProvider, EmbeddingProvider):
         from .entities import SEED
         torch.set_num_threads(max(1, (os.cpu_count() or 2) // 2))
         self.torch = torch
-        model = model or os.environ.get("VISION_MODEL", "hf-hub:timm/ViT-B-16-SigLIP")
+        model = model or model_name()
         self.model, _, self.pre = open_clip.create_model_and_transforms(model, pretrained=pretrained)
         self.tok = open_clip.get_tokenizer(model); self.model.eval()
         # SigLIP-style models carry a learned bias: sigmoid(scale*cos+bias) is a per-label probability.
         self.sigmoid = hasattr(self.model, "logit_bias")
         self._neg = self.embed_text(NEGATIVES)
-        self._aes = self.embed_text([t for pair in AESTHETIC_PAIRS for t in pair])
+        self._aes = self.embed_text([t for pair in AESTHETIC_PAIRS for t in pair]); self._nt = self.embed_text(list(NO_TEXT_PAIR))
         self.labels = _PromptGroup(self, LABEL_PROMPTS)
         self.moderation = _PromptGroup(self, MODERATION_PROMPTS)
         kg = json.load(open(kg_path or SEED, encoding="utf-8"))
@@ -188,6 +197,7 @@ class ClipVision(VisionProvider, EmbeddingProvider):
             base.deities = {d[0][0]: d[0][1]}
         lg = float(self.model.logit_scale.exp()) * (self._aes @ emb)                  # bias cancels in a pos-neg difference
         base.aesthetic = float(np.mean(lg[0::2] - lg[1::2]))
+        nt = float(self.model.logit_scale.exp()) * (self._nt @ emb); base.no_text = float(nt[0] - nt[1])
         base.embedding, base.provider = emb.tolist(), self.name
         return base
 
