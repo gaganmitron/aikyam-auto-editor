@@ -161,6 +161,8 @@ def _plan_classic(src, art, o, info, tr, vis, audio, moments) -> dict:
         p["audio"]["music"] = {"enabled": False, "reason": "music off"}
     for s in p["segments"]:      # subject tracking: a smoothed x-path per segment (renderer-independent, in the plan)
         s["subjectPath"] = [[round(t, 2), round(x, 3)] for t, x in track_subject(src, s["start"], s["end"])]
+    if not o.captions:
+        p["captions"]["cues"] = []; p["captions"]["enabled"] = False
     validate_plan(p, info.duration)
     _dump(os.path.join(art, PLAN), p)
     return p

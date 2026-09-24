@@ -224,6 +224,8 @@ def build_plans(ctx: Ctx) -> List[dict]:
                              {x.id: x.transcript for x in videos if x.transcript} if multi else ctx.transcript, ctx.entities,
                              o.caption_lang, o.caption_mode, None, "9:16", "REEL", o.location, creative, assets or None, o.title, o.subtitle)
         plan["captions"]["cues"] = retime_cues(plan["captions"]["cues"], end=plan["durationSeconds"]); plan["captions"]["enabled"] = bool(plan["captions"]["cues"])
+        if not o.captions:
+            plan["captions"]["cues"] = []; plan["captions"]["enabled"] = False
         d = next((x for x in tl.decisions if x["type"] == "director"), None)
         plan["planner"] = {"mode": "llm-director", "model": d["model"]} if d else ({"mode": "deterministic-fallback", "error": next(x["error"] for x in tl.decisions if x["type"] == "director-fallback")}
                                                                               if any(x["type"] == "director-fallback" for x in tl.decisions) else {"mode": "deterministic"})
@@ -241,9 +243,13 @@ def build_plans(ctx: Ctx) -> List[dict]:
 
 
 # ------------------------------------------------------------------ mix + render + QC + re-edit
-def mix_for(plan: dict, src: str, audio: Optional[AudioProfile], ceiling_db: float = mixer.CEILING_DB):
+def mix_for(plan: dict, src: str, audio: Optional[AudioProfile], ceiling_db: float = mixer.CEILING_DB, voiceover: bool = False):
     m = plan["audio"].get("music", {}); path = M.get_track(m["trackId"]).path if m.get("enabled") else None
-    return mixer.render_audio(plan, src, path, float(m.get("offset", 0.0)), presence_fn(audio), float(m.get("volume", 0.5)), ceiling_db=ceiling_db)
+    mix = mixer.render_audio(plan, src, path, float(m.get("offset", 0.0)), presence_fn(audio), float(m.get("volume", 0.5)), ceiling_db=ceiling_db)
+    if voiceover and plan["captions"].get("cues"):
+        from . import narration
+        mix = narration.apply_voiceover(mix, plan["captions"]["cues"], plan["durationSeconds"], ceiling_db)
+    return mix
 
 
 def render_reel(plan: dict, src: str, out_dir: str, o: Options, audio: Optional[AudioProfile], formats: List[str], name: str = "reel", render_fn=None) -> Tuple[Dict[str, str], dict, dict]:
@@ -253,7 +259,7 @@ def render_reel(plan: dict, src: str, out_dir: str, o: Options, audio: Optional[
     primary = formats[0]; ceiling = mixer.CEILING_DB; report = None; history = []
     for attempt in range(max(0, o.qc_attempts) + 1):
         for s in plan["segments"]: s.pop("liveGainDb", None)                       # level matching is recomputed for the (possibly re-edited) clip set
-        mix = mix_for(plan, src, audio, ceiling)
+        mix = mix_for(plan, src, audio, ceiling, voiceover=o.voiceover)
         path = os.path.join(out_dir, FORMATS[primary]["file"])
         render_fn({**plan, "outputFormat": FORMATS[primary]["outputFormat"], "aspectRatio": FORMATS[primary]["aspect"]}, src, path, primary, out_dir, mix=mix)
         report = QC.run_qc(plan, path, out_dir, mix, primary) if o.qc else None

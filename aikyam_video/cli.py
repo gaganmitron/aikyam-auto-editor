@@ -18,6 +18,8 @@ def main(argv=None) -> int:
         s.add_argument("--language", help="force source language code (default: detect)")
         s.add_argument("--translate", action="store_true", help="whisper translate to English")
         s.add_argument("--caption-lang"); s.add_argument("--caption-mode", choices=["sentence", "word"], default="sentence")
+        s.add_argument("--no-captions", action="store_true", help="render with no caption overlay at all")
+        s.add_argument("--voiceover", action="store_true", help="read the captions aloud (offline espeak-ng TTS), ducked into the mix; creative engine only")
         s.add_argument("--target-seconds", type=float, default=None, help="reel length (default: chosen by the pacing profile, 25-40 s)")
         s.add_argument("--engine", choices=["creative", "classic"], default="creative", help="creative: story-aware editing engine; classic: greedy score-ordered planner")
         s.add_argument("--pacing", choices=["contemplative", "devotional", "festive"], help="force a pacing profile (default: from the footage)")
@@ -83,7 +85,7 @@ def main(argv=None) -> int:
         import uvicorn
         uvicorn.run("aikyam_video.api:app", factory=True, host=a.host, port=a.port); return 0
     o = pipeline.Options(vision=a.vision, whisper_model=a.whisper_model, language=a.language, translate=a.translate,
-                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
+                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=not a.no_captions, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
                          scoring_config=a.scoring_config, temple_id=a.temple_id, location=a.location, festival_id=a.festival_id,
                          music_track=a.music_track, music=a.music, music_volume=a.music_volume, renderer=a.renderer, transition=a.transition, transition_seconds=a.transition_seconds, planner=a.planner, audio_tagger=a.audio_tagger,
                          formats=[a.format] if a.format else ["reel", "square", "landscape"])
