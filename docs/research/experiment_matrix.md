@@ -981,3 +981,78 @@ what the evidence actually supports; a broader claim would be unvalidated.
 
 **Status:** shipped. Research loop frozen here per instruction — moving to full
 pipeline + hardware testing next.
+
+---
+
+## EXP-012 — Clip-selection signals vs. reel-worthiness (label calibration, aesthetic prior)
+
+**Question.** The reel picks clips by summing label scores. Which cheap, label-free changes make that selection better — and is
+label quality even the bottleneck? (No human at runtime; ground truth below is development-time only.)
+
+**Benchmark (new).** 35 frames from 3 real CC-licensed videos (Golden Temple documentary, Ganga aarti Janakpur, home-temple
+aarti Kolkata). Ground truth = label sets and 1-5 "reel-worthiness" ratings **written by the assistant viewing each frame**:
+subjective, conservative, one rater, ~15 (video,label) pairs with variation. Treat every number below as weak evidence.
+Files: `tools/bench_labels.py`, `tools/bench_clips.py`, `tools/bench_scoring.py`, `tools/bench_*_truth|ratings.json`.
+
+**Label calibration — three ideas, all refuted (nothing shipped).** Within-video AP, raw SigLIP sigmoid (current) = 0.85.
+Softmax competition vs other labels+negatives 0.75; frame-centred logit 0.80; video-relative logit = 0.85 (identical: a constant
+per label cannot reorder frames of that label); corpus z-score best single-threshold F1 0.55 vs 0.58. Cross-video AP looked
+better for raw sigmoid only because it separates *different videos* — the wrong test for within-video selection.
+**Real bottleneck found: cross-label scale.** Best per-label thresholds range 0.001-0.42; at KEEP=0.2 recall is 0.39 (precision
+0.69); at 0.02 recall 0.68 / precision 0.51 (2 false labels/frame). Low-scale labels (flowers, devotees, temple_architecture,
+procession, decorations) are effectively invisible to scoring. Not fixed: 35 frames is too few to ship per-label thresholds.
+
+**New labels (10, from temple-videography coverage review).** Wired into vision prompts + `scoring.DEVOTIONAL` + `roles.json`
+groups (a label in only one of the three is dead; guard test `tests/test_label_coverage.py`). On the benchmark: `offerings`
+(4/4) and `food_service` (1/1) correct; `sanctum_view` / `devotees_walking` only duplicate idol/deity and crowd/devotees;
+the other six never fired (no such content in the footage) — **unvalidated**.
+
+**Aesthetic prior (CLIP-IQA-style antonym prompts on the existing SigLIP embeddings).** Frame level, pre-committed composite
+(quality + cinematic; "colourful" excluded on purpose to avoid encoding the rater's taste): Spearman +0.57 overall, and
+positive inside every video separately (+0.52 / +0.85 / +0.79), precision@8 0.875 vs 0.57 base rate. Pipeline's own frame
+signals: visual importance +0.07, devotional relevance +0.19, exposure −0.28 (penalises dark night shots). Moment level
+(22 scene windows, Golden Temple, real scoring code): default weights rho +0.34; aesthetic alone +0.32; default + aesthetic
+0.15 → rho +0.44 but precision@6 0.83 → 0.67. **At n=22 that is noise** (SE of rho ≈ 0.2) — no improvement can be claimed.
+Shipped as `scoring.aesthetic` with **default weight 0 (opt-in)**. Bug found while measuring: `analysis._merge` dropped the new
+`VisionResult.aesthetic` field (fixed; that run's artifacts predate the fix, so the test derived it from saved embeddings).
+
+**Conclusion.** Labels rank frames within a video reasonably (AP 0.85); calibration across labels and vocabulary coverage are the
+real limits. Weights for visual (0.25) and audio (0.15) importance show ~no relation to reel-worthiness here (suggestive only).
+**Next action.** Enlarge the benchmark (~100 frames, 8-10 videos) before turning anything on.
+
+## EXP-013 — Can a small VLM understand a frame better than SigLIP, at CPU speed? (scene-type, closed set)
+
+**Method.** 8-way scene type (aarti / deity / exterior / devotees / procession / rites / food / other) on the same 35 frames;
+truth derived from EXP-012's labels. `tools/bench_vlm.py`. Baseline = SigLIP zero-shot argmax over 8 prompts.
+
+| Model | Accuracy | Speed (this CPU) |
+|---|---|---|
+| SigLIP zero-shot (current) | **0.69** | ~instant (embeddings already computed) |
+| SmolVLM-500M (fp32, 512px) | 0.40 | 3.6 s/frame |
+| SmolVLM-256M | unusable: answered "H" for every image; free-text captions are literal ("a boat on the water", "a statue of a person") | 4 s/frame |
+| Moondream via Ollama (EXP-011, 2-class only) | 9/9 | ~195 s/frame **while the box was swapping** (~1.5 GB free) |
+
+**Conclusion.** VLMs small enough for this machine are *worse* than SigLIP at scene understanding here (they get Hindu idol/aarti
+frames right and fail the Golden Temple). Speed is not the problem for ≤0.5B models; capability is. The 1.7-3B class (Moondream,
+Qwen2.5-VL-3B) is untested at scale because RAM is the constraint (desktop apps hold ~4 GB of 5.7 GB). Env note: `transformers`
+is pinned at 4.46.3 (CLAP); SmolVLM needs `size={"longest_edge": 512}, do_image_splitting=False` passed to the processor.
+**Next action.** Do not build a VLM re-ranker on this hardware. Revisit with a machine that has >=8 GB free, as an opt-in plug-in.
+
+## EXP-014 — Coverage-aware story planning (facility-location term in the beam search)
+
+**Idea.** The planner scores shots one by one (role affinity x quality, minus pairwise redundancy). Add a set-level term: reward a pick by
+how much it improves `sum_i w_i * max_{j in picked} R[i,j]` over the WHOLE pool (R = similarity beyond the pool's typical similarity, the
+same transform `red` uses; w = length x score). Representative + diverse by construction, needs no label vocabulary. Implemented in
+`story.py` (`S["coverage"]`, added after the quality gate like chronology, so it ranks candidates that clear the bar and never rescues one
+that doesn't). **Default 0 = off.** Tests: `tests/test_coverage.py` (synthetic 13-shot / 3-topic pool: plan changes, pool coverage 0.645 -> 0.730).
+
+**Diagnostic on the real 11-min Golden Temple reel (saved analysis only, no pipeline run; 120 scenes).**
+- Reel covers 0.285 of the recording; greedy coverage-only 6 scenes cover 0.364 -> real headroom (+28%), but coverage alone is not the goal.
+- **Coverage does NOT flag the clip that looked weak** (clip 2, BUILDUP, a pilgrim's face close-up): marginal coverage 0.019 (mid-pack;
+  lowest were REVEAL 0.012 and RITUAL 0.016) and standing-alone coverage 0.145 (2nd highest) because face close-ups are a frequent scene
+  type in this documentary, i.e. "representative".
+- The aesthetic prior (EXP-012) does not flag it either: clip 2 sits at the 0.60 percentile; the lowest is the REVEAL (0.12), a shot the
+  rater scored highly. So neither lever addresses that defect. Candidate cause (untested): BUILDUP has no term against static portraits.
+
+**Conclusion.** Built as an opt-in knob; NOT evidence that reels improve. **Next action:** A/B two real reels (coverage 0 vs ~0.5) once
+the pipeline is cleared to run, and judge by eye. Do not enable by default before that.

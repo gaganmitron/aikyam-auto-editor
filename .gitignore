@@ -20,3 +20,6 @@ inputs/*.mov
 .env.*
 *.pem
 *.key
+
+.pytest-tmp/
+inputs/*.ml.json
