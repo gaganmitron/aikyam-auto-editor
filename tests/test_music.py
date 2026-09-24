@@ -98,8 +98,7 @@ def test_music_block_carries_credit_info():
 # ------------------------------------------------------------------ the shipped starter library
 def test_starter_library_is_valid_and_covers_the_main_moods(monkeypatch):
     import os
-    monkeypatch.setenv("MUSIC_LIBRARY_DIR", os.path.join(os.path.dirname(__file__), "..", "music"))
-    tracks, bad = music.load_library()
+    tracks, bad = music.load_library(os.path.join(os.path.dirname(__file__), "..", "music"))          # the curated library only: web-fetched tracks live in music/web/
     assert not bad and len(tracks) >= 4 and all(t.licence == "AIKYAM-OWNED" for t in tracks)
     assert all(t.duration >= 60 for t in tracks)                                                     # longer than the 60 s reel cap: never loops
     for reasons, kw in ((["aarti"], {"ritualId": "ritual_12"}), (["procession"], {"festivalId": "festival_13"}), (["deity", "idol"], {})):

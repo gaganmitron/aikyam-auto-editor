@@ -14,11 +14,12 @@ PULL = 0.6            # fraction of the gap to the reel median that is corrected
 MAX_BRIGHT = 0.08     # eq brightness offset cap (0..1 scale)
 MAX_SAT = 0.20        # saturation multiplier stays within 1 +- this
 MAX_WARM = 0.05       # red/blue channel gain cap (+-5%: R gains, B loses)
-NEUTRAL = (0.012, 0.03, 0.006)   # corrections smaller than this (brightness, saturation, warmth) are not worth a filter
+MAX_TINT = 0.06       # green channel gain cap (+-6%): the yellow-green cast of fluorescent / aged footage
+NEUTRAL = (0.012, 0.03, 0.006, 0.006)   # corrections smaller than this (brightness, saturation, warmth, tint) are not worth a filter
 
 
-def measure(src: str, t: float) -> Optional[Tuple[float, float, float]]:
-    """(mean luma, mean saturation, warmth = mean(R)-mean(B)), each 0..1, from one frame of the SOURCE at time t; None if the frame can't be read."""
+def measure(src: str, t: float) -> Optional[Tuple[float, float, float, float]]:
+    """(mean luma, mean saturation, warmth = mean(R)-mean(B), tint = mean(G)-(mean(R)+mean(B))/2), each 0..1, from one frame of the SOURCE at time t; None if the frame can't be read."""
     with tempfile.TemporaryDirectory() as td:
         f = os.path.join(td, "f.jpg")
         try:
@@ -30,15 +31,15 @@ def measure(src: str, t: float) -> Optional[Tuple[float, float, float]]:
         return None
     im = cv2.resize(im, (160, 90), interpolation=cv2.INTER_AREA)
     b, g, r = (im[..., k].astype(float).mean() / 255 for k in range(3))
-    return float(cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).mean() / 255), float(cv2.cvtColor(im, cv2.COLOR_BGR2HSV)[..., 1].mean() / 255), float(r - b)
+    return float(cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).mean() / 255), float(cv2.cvtColor(im, cv2.COLOR_BGR2HSV)[..., 1].mean() / 255), float(r - b), float(g - (r + b) / 2)
 
 
-def match(stats: Sequence[Optional[Tuple[float, float, float]]]) -> List[Optional[dict]]:
+def match(stats: Sequence[Optional[Tuple[float, float, float, float]]]) -> List[Optional[dict]]:
     """Per-clip corrections {brightness, saturation, warmth} toward the median of the measurable clips; None = leave that clip alone."""
     ok = [s for s in stats if s is not None]
     if len(ok) < 2:
         return [None] * len(stats)
-    tl, ts, tw = (float(np.median([s[k] for s in ok])) for k in range(3))
+    tl, ts, tw, tt = (float(np.median([s[k] for s in ok])) for k in range(4))
     out: List[Optional[dict]] = []
     for s in stats:
         if s is None:
@@ -46,8 +47,9 @@ def match(stats: Sequence[Optional[Tuple[float, float, float]]]) -> List[Optiona
         b = float(np.clip(PULL * (tl - s[0]), -MAX_BRIGHT, MAX_BRIGHT))
         k = float(np.clip(1.0 + PULL * (ts / max(s[1], 1e-3) - 1.0), 1 - MAX_SAT, 1 + MAX_SAT))
         w = float(np.clip(1.25 * PULL * (tw - s[2]), -MAX_WARM, MAX_WARM))       # a gain g moves R-B by ~2*g*mean(level) ~ 0.8*g at typical levels
-        g = {"brightness": round(b, 3), "saturation": round(k, 3), "warmth": round(w, 3)}
-        out.append(g if (abs(b) >= NEUTRAL[0] or abs(k - 1) >= NEUTRAL[1] or abs(w) >= NEUTRAL[2]) else None)
+        t = float(np.clip(1.25 * PULL * (tt - s[3]), -MAX_TINT, MAX_TINT))              # too green (s[3] > median) -> negative: green gain drops
+        g = {"brightness": round(b, 3), "saturation": round(k, 3), "warmth": round(w, 3), "tint": round(t, 3)}
+        out.append(g if (abs(b) >= NEUTRAL[0] or abs(k - 1) >= NEUTRAL[1] or abs(w) >= NEUTRAL[2] or abs(t) >= NEUTRAL[3]) else None)
     return out
 
 
@@ -58,9 +60,9 @@ def filter_expr(g: Dict[str, float]) -> str:
     parts = []
     if abs(g.get("brightness", 0)) >= NEUTRAL[0] or abs(g.get("saturation", 1) - 1) >= NEUTRAL[1]:
         parts.append(f"eq=brightness={g.get('brightness', 0):.3f}:saturation={g.get('saturation', 1):.3f}")
-    w = g.get("warmth", 0.0)
-    if abs(w) >= NEUTRAL[2]:
-        parts.append(f"colorchannelmixer=rr={1 + w:.3f}:bb={1 - w:.3f}")          # linear, predictable (ffmpeg's colorbalance lost its effect after an eq)
+    w, t = g.get("warmth", 0.0), g.get("tint", 0.0)
+    if abs(w) >= NEUTRAL[2] or abs(t) >= NEUTRAL[3]:
+        parts.append(f"colorchannelmixer=rr={1 + w:.3f}:gg={1 + t:.3f}:bb={1 - w:.3f}")     # linear, predictable (ffmpeg's colorbalance lost its effect after an eq)
     return ",".join(parts)
 
 

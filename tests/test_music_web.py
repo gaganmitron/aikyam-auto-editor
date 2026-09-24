@@ -45,3 +45,28 @@ def test_registered_track_passes_the_licence_gate_with_attribution(tmp_path):
 def test_find_never_raises_when_offline(tmp_path):
     def boom(url): raise OSError("no network")
     t, why = W.find({"aarti": 0.9}, "devotional", 45, fetch=boom, lib=str(tmp_path)); assert t is None and "unavailable" in why
+
+
+def test_a_beat_bonus_prefers_a_track_with_a_detectable_tempo_but_content_still_counts():
+    import types
+    class An:                                                                                     # what analyze_samples returns: kind + a tempo (or None)
+        def __init__(self, bpm): self.kind, self.bpm = "melodic", bpm
+    tempos = {"/x/good.mp3": None, "/x/speech.mp3": 100.0, "/x/other.mp3": 100.0}                # the best-matching track has no beat
+    import aikyam_video.creative.musicdna as md, aikyam_video.ffmpeg as ff
+    orig_an, orig_pcm = md.analyze_samples, ff.extract_audio_pcm
+    md.analyze_samples = lambda pcm: An(tempos[pcm]); ff.extract_audio_pcm = lambda p, sr: p
+    try:
+        paths = {"a": "/x/good.mp3", "b": "/x/speech.mp3", "c": "/x/other.mp3"}
+        base = W.rank(paths, "desc", "devotional", FakeEmb())
+        bonus = W.rank(paths, "desc", "devotional", FakeEmb(), beat_bonus=1.0)
+        small = W.rank(paths, "desc", "devotional", FakeEmb(), beat_bonus=0.20)
+    finally:
+        md.analyze_samples, ff.extract_audio_pcm = orig_an, orig_pcm
+    assert base[0][1] == "a" and bonus[0][2]["beat"] is True and bonus[0][1] != "a"               # content wins by default; a big enough bonus lets a track with a tempo overtake a beatless one
+    assert small[0][1] == "a"                                                                     # the small bonus we ship never overrides a clearly better content match
+
+
+def test_extra_search_words_are_added_not_cut_off():
+    labels = {"aarti": 0.9, "procession": 0.8}
+    assert "kirtan" not in W.queries(labels, "contemplative")                                        # the usual list is capped at 6
+    q = W.queries(labels, "contemplative", ["bhajan", "kirtan", "tabla"], n=9); assert {"bhajan", "kirtan", "tabla"} <= set(q)

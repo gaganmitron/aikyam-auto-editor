@@ -5,7 +5,7 @@
   download           : a few candidates, size/length capped, cached in <library>/web/
   rank               : CLAP (zero-shot audio-text model, laion/clap-htsat-unfused) similarity of the audio to a description of THIS reel, minus similarity to non-music prompts (speech, noise,
                        sound effect, silence); + a small fit bonus from our own music analysis (drone/melodic for calm reels, rhythmic for festive ones)
-  register           : the winner is added to the licensed library (music/library.json) so the normal gate (music.load_library) applies.
+  register           : the winner is added to the web library (music/web/library.json, untracked) so the normal gate (music.load_library) applies.
 Licence data is Openverse's metadata: not independently verified. Look at the attribution/source recorded in library.json before publishing."""
 from __future__ import annotations
 import hashlib, json, logging, os, re, urllib.parse, urllib.request
@@ -33,9 +33,10 @@ def queries(labels: Dict[str, float], profile: str, extra: Optional[List[str]] =
     """Up to n distinct single-word searches: what the reel shows first, then what its pacing wants."""
     top = [k for k, _ in sorted(labels.items(), key=lambda kv: -kv[1]) if k in LABEL_WORDS][:2]
     out: List[str] = []
-    for q in [w for k in top for w in LABEL_WORDS[k]] + PROFILE_WORDS.get(profile, PROFILE_WORDS["devotional"]) + list(extra or []):
+    for q in [w for k in top for w in LABEL_WORDS[k]] + PROFILE_WORDS.get(profile, PROFILE_WORDS["devotional"]):
         if q not in out: out.append(q)
-    return out[:n]
+    ext = [q for i, q in enumerate(extra or []) if q not in (extra or [])[:i]]                    # extras keep their place: the usual list is trimmed to make room, never the other way round
+    return ([q for q in out if q not in ext][:max(0, n - len(ext))] + ext)[:n]
 
 
 def description(labels: Dict[str, float], profile: str) -> str:
@@ -100,22 +101,24 @@ class Clap:
         a = (a / a.norm(dim=-1, keepdim=True)).numpy().mean(axis=0); return a / (np.linalg.norm(a) + 1e-9)
 
 
-def rank(paths: Dict[str, str], desc: str, profile: str, embedder=None, kind_of: Optional[Callable[[str], str]] = None) -> List[Tuple[float, str, dict]]:
+def rank(paths: Dict[str, str], desc: str, profile: str, embedder=None, kind_of: Optional[Callable[[str], str]] = None, beat_bonus: float = 0.0) -> List[Tuple[float, str, dict]]:
     """[(score, id, detail)] best first. paths: candidate id -> local file."""
     from . import ffmpeg as ff
     from .creative.musicdna import SR, analyze_samples
     emb = embedder or Clap(); T = emb.text([desc] + NEGATIVE); out = []
-    kind_of = kind_of or (lambda p: analyze_samples(ff.extract_audio_pcm(p, SR)).kind)        # fast autocorrelation only: the beat-grid analysis (Beat This!) is for the winner
     for cid, p in paths.items():
-        a = emb.audio(p); sims = T @ a; kind = kind_of(p)
-        s = float(sims[0] - 0.5 * sims[1:].max() + FIT.get(profile, {}).get(kind, 0.0))
-        out.append((round(s, 4), cid, {"similarity": round(float(sims[0]), 4), "nonMusic": round(float(sims[1:].max()), 4), "kind": kind}))
+        a = emb.audio(p); sims = T @ a
+        an = None if kind_of else analyze_samples(ff.extract_audio_pcm(p, SR))                     # fast autocorrelation only: the full beat-grid analysis (Beat This!) is for the winner
+        kind = kind_of(p) if kind_of else an.kind
+        beat = bool(an is not None and an.bpm)                                                      # a detectable tempo: the cuts can land on it (beat_bonus > 0 when they must follow the music)
+        s = float(sims[0] - 0.5 * sims[1:].max() + FIT.get(profile, {}).get(kind, 0.0) + (beat_bonus if beat else 0.0))
+        out.append((round(s, 4), cid, {"similarity": round(float(sims[0]), 4), "nonMusic": round(float(sims[1:].max()), 4), "kind": kind, "beat": beat}))
     return sorted(out, key=lambda x: (-x[0], x[1]))
 
 
 def register(c: dict, path: str, kind: str, labels: List[str], lib: Optional[str] = None) -> M.Track:
     """Add the downloaded track to the licensed library (attribution written for CC BY) and return it."""
-    d = M.library_dir() if lib is None else __import__("pathlib").Path(lib); d.mkdir(parents=True, exist_ok=True); mf = d / "library.json"
+    d = (M.library_dir() if lib is None else __import__("pathlib").Path(lib)) / "web"; d.mkdir(parents=True, exist_ok=True); mf = d / "library.json"      # its OWN library: third-party audio never enters the curated one
     data = json.loads(mf.read_text(encoding="utf-8")) if mf.is_file() else {"tracks": []}
     tid = "web_" + re.sub(r"[^A-Za-z0-9]", "", c["id"])[:12]; rel = os.path.relpath(path, d).replace(os.sep, "/")
     attr = f'"{c["title"]}" by {c["creator"]} ({c["landing"]}), {c["licence"]}' if c["licence"].startswith("CC-BY") else None
@@ -126,11 +129,11 @@ def register(c: dict, path: str, kind: str, labels: List[str], lib: Optional[str
     return M.get_track(tid)
 
 
-def find(labels: Dict[str, float], profile: str, reel_seconds: float, n_download: int = 8, fetch=_get, embedder=None, lib: Optional[str] = None) -> Tuple[Optional[M.Track], str]:
+def find(labels: Dict[str, float], profile: str, reel_seconds: float, n_download: int = 8, fetch=_get, embedder=None, lib: Optional[str] = None, beat_bonus: float = 0.0, extra: Optional[List[str]] = None) -> Tuple[Optional[M.Track], str]:
     """(Track or None, why). Never raises: no network / no match -> (None, reason) and the normal music choice stands."""
     try:
         cands: Dict[str, dict] = {}
-        for q in queries(labels, profile):
+        for q in queries(labels, profile, extra, n=6 + len(extra or [])):                    # extras are searched IN ADDITION to the usual six (queries() would cut them off)
             for c in search(q, reel_seconds + 5.0, fetch=fetch):
                 cands.setdefault(c["id"], {**c, "query": q, "hits": 0})["hits"] += 1                                            # found by several searches = more likely on topic
         if not cands: return None, "web music: no track with an allowed licence matched the searches"
@@ -140,7 +143,7 @@ def find(labels: Dict[str, float], profile: str, reel_seconds: float, n_download
             p = download(c, cache)
             if p: paths[c["id"]] = p
         if not paths: return None, "web music: every download failed"
-        best = rank(paths, description(labels, profile), profile, embedder)[0]; c = cands[best[1]]
+        best = rank(paths, description(labels, profile), profile, embedder, beat_bonus=beat_bonus)[0]; c = cands[best[1]]
         t = register(c, paths[best[1]], best[2]["kind"], sorted(labels, key=lambda k: -labels[k])[:4], lib)
         return t, f"found online: '{c['title']}' by {c['creator']} ({c['licence']}, {c['provider']}), query '{c['query']}', CLAP similarity {best[2]['similarity']}, {len(paths)} candidates compared"
     except Exception as e:                                                                           # noqa: BLE001

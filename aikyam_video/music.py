@@ -52,8 +52,16 @@ def _allowed() -> set:
 
 
 def load_library(directory: Optional[str] = None) -> Tuple[List[Track], List[Tuple[str, str]]]:
-    """Return (usable tracks, [(track id, reason it was refused)])."""
+    """Return (usable tracks, [(track id, reason it was refused)]). The curated library is <dir>/library.json; tracks fetched by --music-web live in their OWN library
+    <dir>/web/library.json (untracked third-party audio: never mixed into the curated, committed one). An explicit `directory` reads only that directory's library.json."""
     d = Path(directory) if directory else library_dir()
+    ok, bad = _read_library(d)
+    if not directory:
+        ok2, bad2 = _read_library(d / "web"); ok += ok2; bad += bad2
+    return ok, bad
+
+
+def _read_library(d: Path) -> Tuple[List[Track], List[Tuple[str, str]]]:
     mf = d / "library.json"
     if not mf.is_file():
         return [], []
