@@ -93,9 +93,9 @@ def partition_moments(moments: Sequence[Moment], min_len: float = 3.0) -> List[M
 
 
 def build_shots(src: str, moments: Sequence[Moment], vision: Sequence[SceneVision], audio: Optional[AudioProfile], top_k: int = 16, asset_id: str = "a1", edge_info: bool = True,
-                duration: Optional[float] = None) -> List[Shot]:
+                duration: Optional[float] = None, use_speech: bool = True) -> List[Shot]:
     """One Shot per validated moment (best `top_k` by score): labels, mean embedding, event means and per-slot features."""
-    shots = []; ml_cuts = _mlx.cuts(src) if edge_info else None; vad = _mlx.speech(src) if edge_info else None       # neural evidence, once per file (None -> heuristics)
+    shots = []; ml_cuts = _mlx.cuts(src) if edge_info else None; vad = _mlx.speech(src) if (edge_info and use_speech) else None       # neural evidence, once per file (None -> heuristics); use_speech=False: the recorded voice is not evidence for anything
     for m in sorted(partition_moments(moments), key=lambda m: (-m.score, m.start))[:top_k]:
         sv = [v for v in vision if v.end > m.start and v.start < m.end]
         labels: Dict[str, float] = {}                                                                   # time-weighted mean over the scenes the window covers: the labels describe the WINDOW, not its luckiest frame

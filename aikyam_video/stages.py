@@ -98,7 +98,13 @@ def highlights(src: str, art: str, o: Options):
     ents = _entities.resolve_media_entities(tr, vis, ex, hints)
     _dump(os.path.join(art, ENTITIES), {k: [r.model_dump() for r in v] for k, v in ents.items()})
     ctx = build_ctx(src, info, scenes, vis, tr, audio, ex, black=black, profile=o.profile, allow_silent=o.allow_silent)
-    moments, rejected = generate_moments(ctx, ScoringConfig.load(o.scoring_config), ex, METRICS)
+    cfg = ScoringConfig.load(o.scoring_config)
+    if o.source_audio == "off":                                              # the recorded sound (narration, chanting) is not part of the reel: it must not decide which moments are picked
+        cfg.weights = {**cfg.weights, "audioImportance": 0.0, "semanticImportance": 0.0}
+    if o.experimental_selection:                                             # opt-in terms; explicit weights from --scoring-config still win
+        from . import ranker
+        cfg.weights = {**cfg.weights, **{k: v for k, v in {"aesthetic": 0.15, "learned": 0.15 if ranker.load() else 0.0}.items() if not cfg.weights.get(k)}}
+    moments, rejected = generate_moments(ctx, cfg, ex, METRICS)
     _dump(os.path.join(art, MOMENTS), {"moments": [m.model_dump() for m in moments], "rejected": [r.model_dump() for r in rejected]})
     return moments, rejected
 

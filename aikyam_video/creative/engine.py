@@ -15,12 +15,13 @@ from ..models import EntityRef, Moment, SceneVision, Transcript
 from ..options import Options
 from ..plan import assemble_plan, validate_plan
 from ..reframe import camera_path, smooth_path, track_subject_ex
-from . import layout, mixer, music_sync, pacing, qc as QC, replan, story, transitions
+from . import grade, layout, mixer, music_sync, pacing, qc as QC, replan, story, transitions
 from .model import Clip, Shot, Timeline
 from .stills import motion_for
 from .musicdna import analyze_track
 from .shots import Population, build_shots
 
+EXPERIMENTAL_COVERAGE = 0.5      # story.py coverage weight used by --experimental-selection (EXP-014: synthetic evidence only)
 PRESENCE_EVENTS = ("chant", "bhajan", "speech", "bell", "conch")
 
 
@@ -52,15 +53,16 @@ class Ctx:
     sources: Optional[List[Source]] = None      # several assets (multi-input); None = the single video in src/moments/...
 
 
-def _make_edger(by_id):
+def _make_edger(by_id, use_audio: bool = True):
     """edger(shot, a, b, min_len, max_len, first, last) -> (a', b', info): put a window's edges on real boundaries of ITS source (cuts, speech phrases, pauses, motion onsets/lulls; see cutpoints)."""
     from . import cutpoints as cp, edges, mlx
-    phr = {k: cp.phrases(getattr(S, "transcript", None)) for k, S in by_id.items() if getattr(S, "kind", "video") == "video"}
-    for k, S in by_id.items():                                                              # no transcript (e.g. a language Whisper missed): Silero speech segments stand in for phrases
+    phr = {k: cp.phrases(getattr(S, "transcript", None)) if use_audio else [] for k, S in by_id.items() if getattr(S, "kind", "video") == "video"}
+    for k, S in by_id.items():                                                              # (use_audio=False: picture-only edges -- cuts and motion onsets/lulls, never speech)
+        if not use_audio: break                                                              # no transcript (e.g. a language Whisper missed): Silero speech segments stand in for phrases
         if k in phr and not phr[k]: phr[k] = [tuple(x) for x in (mlx.speech(S.path) or [])]
     def edger(shot, a, b, lo, hi, first=False, last=False):
         S = by_id[shot.asset_id]; ph = phr.get(shot.asset_id, [])
-        ins, outs = cp.candidates(shot, shot.cuts, [tuple(p) for p in shot.pauses], ph)
+        ins, outs = cp.candidates(shot, shot.cuts, [tuple(p) for p in shot.pauses] if use_audio else [], ph)
         return cp.choose_edges(a, b, shot.start, shot.end, ins, outs, ph, lo, hi, first=first, last=last, refine=lambda t: edges.refine_boundary(S.path, t, S.info.fps))
     return edger
 
@@ -99,7 +101,8 @@ def choose_music(plan_like: dict, audio, profile: pacing.PacingProfile, o: Optio
     tracks, _ = M.load_library()
     if not tracks:
         return None, "no licensed music library"
-    lvl = M.original_devotional_level(plan_like, audio)
+    silent = o.source_audio == "off"
+    lvl = 0.0 if silent else M.original_devotional_level(plan_like, audio)
     if lvl >= o.music_skip_threshold:
         return None, f"original audio is already devotional music/chanting ({lvl:.2f} >= {o.music_skip_threshold})"
     allowed = {"drone"} if lvl >= 0.35 else {"drone", "melodic", "rhythmic"}
@@ -114,9 +117,9 @@ def choose_music(plan_like: dict, audio, profile: pacing.PacingProfile, o: Optio
     if not ranked:
         return None, f"no track fits the live sound (devotional level {lvl:.2f} allows only drones)"
     ranked.sort(key=lambda x: (-x[0], x[1])); s, _, best = ranked[0]
-    if s < 0.3:
+    if s < 0.3 and not silent:                                  # a silent-source reel needs music more than it needs a perfect match: take the best one
         return None, f"no track matches this reel (best {best.id} scored {s})"
-    return best, f"matched '{best.id}' ({_kind(best)}, score {s}; live devotional level {lvl:.2f}, pacing {profile.name})"
+    return best, f"matched '{best.id}' ({_kind(best)}, score {s}; " + ("recorded sound off" if silent else f"live devotional level {lvl:.2f}") + f", pacing {profile.name})"
 
 
 # ------------------------------------------------------------------ plan building
@@ -134,11 +137,12 @@ def build_plans(ctx: Ctx) -> List[dict]:
     multi = ctx.sources is not None
     srcs = ctx.sources or [Source("a1", ctx.src, "video", ctx.info, ctx.moments, ctx.vision, ctx.audio, ctx.transcript)]
     by_id = {x.id: x for x in srcs}; shots = []
+    silent = o.source_audio == "off"          # the recorded sound is not part of the reel: no audio evidence in selection, cuts, transitions or the mix
     for x in srcs:
         if x.kind == "image":
             shots.append(x.shot)
         else:
-            sh = build_shots(x.path, x.moments, x.vision, x.audio, top_k=16 if len(srcs) == 1 else 8, asset_id=x.id, edge_info=o.edge_snap, duration=x.info.duration)
+            sh = build_shots(x.path, x.moments, x.vision, None if silent else x.audio, top_k=16 if len(srcs) == 1 else 8, asset_id=x.id, edge_info=o.edge_snap, duration=x.info.duration, use_speech=not silent)
             if multi:
                 for k in sh: k.position = (k.start + k.end) / 2 / max(x.info.duration, 1e-9); k.id = f"{x.id}_{k.id}"     # moment ids repeat across videos: shot ids must not
             shots += sh
@@ -153,14 +157,14 @@ def build_plans(ctx: Ctx) -> List[dict]:
         raise RuntimeError("no analysable shots")
     pop = Population(shots); prof = pacing.choose_profile(shots, o.pacing)
     if o.opening: prof = dataclasses.replace(prof, opening=o.opening)
-    snap = _quiet_snap(ctx_audio)
+    snap = None if silent else _quiet_snap(ctx_audio)
     director = None
     if o.planner == "llm":
         from ..planner_llm import make_director
         director = make_director(getattr(o, "llm", None))
     notes = {k.id: " ".join(t.text for t in x.transcript.segments if t.end > k.start and t.start < k.end) for x in videos if x.transcript for k in shots if k.asset_id == x.id}
-    edger = _make_edger(by_id) if o.edge_snap else None
-    stories = story.plan_stories(shots, pop, prof, D, max(1, o.reels), o.target_seconds, snap, director=director, notes=notes, order=o.order, edger=edger, motion_dedupe=o.motion_dedupe, hook_first=o.hook_first)
+    edger = _make_edger(by_id, use_audio=not silent) if o.edge_snap else None
+    stories = story.plan_stories(shots, pop, prof, D, max(1, o.reels), o.target_seconds, snap, director=director, notes=notes, order=o.order, edger=edger, motion_dedupe=o.motion_dedupe, hook_first=o.hook_first, coverage=EXPERIMENTAL_COVERAGE if o.experimental_selection else None)
     if not stories:
         raise RuntimeError("no story could be built from the candidate shots")
     plans = []
@@ -169,7 +173,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
         prelim = {"source": {"ritualId": _ids(ctx.entities, "RITUAL"), "deityId": _ids(ctx.entities, "DEITY"), "festivalId": _ids(ctx.entities, "FESTIVAL")},
                   "segments": [{"start": c.start, "end": c.end, "reason": _reason(c), "score": c.shot.score} for c in tl.clips]}
         track, why = choose_music(prelim, ctx_audio, prof, o)
-        if o.music_web and not o.music_track and o.music == "auto" and M.original_devotional_level(prelim, ctx_audio) < o.music_skip_threshold:       # the live sound is not already devotional music
+        if o.music_web and not o.music_track and o.music == "auto" and (o.source_audio == "off" or M.original_devotional_level(prelim, ctx_audio) < o.music_skip_threshold):       # the live sound is not already devotional music (or is not used at all)
             from .. import music_web
             lab = {}
             for c in tl.clips:
@@ -193,7 +197,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
             tl.decisions.append({"type": "music", "track": track.id, "kind": _kind(track), "bpm": analysis.bpm and round(analysis.bpm, 1), "offset": offset, "sync": {k: (round(v, 3) if isinstance(v, (int, float)) else v) for k, v in sync.items()}, "why": why})
         else:
             tl.decisions.append({"type": "music", "track": None, "why": why})
-        segs = []; n_img = 0
+        segs = []; n_img = 0; probes = []
         for i, c in enumerate(tl.clips):
             S = by_id[c.shot.asset_id]
             if c.shot.kind == "image":
@@ -213,7 +217,9 @@ def build_plans(ctx: Ctx) -> List[dict]:
             if i > 0 and c.transition_in: d["transitionIn"] = {k: c.transition_in[k] for k in ("type", "durationSeconds", "reason")}
             if i > 0 and c.audio_lead: d["audioLead"] = c.audio_lead
             if multi: d["assetId"] = S.id; d["kind"] = "video"
-            segs.append(d)
+            segs.append(d); probes.append((S.path, (c.start + c.end) / 2, not getattr(S.info, "hdr", False)))      # HDR footage is measured before tone-mapping: leave it alone
+        if o.color_match and o.renderer == "ffmpeg":                  # only the ffmpeg renderer draws the grade
+            grade.apply(segs, [(p, t, ok and sg.get("kind") != "image") for (p, t, ok), sg in zip(probes, segs)])
         creative = {"version": 2, "engine": "creative", "edgeSnap": bool(o.edge_snap), "motionDedupe": bool(o.motion_dedupe), "order": tl.order, "profile": prof.name, "arc": tl.arc, "decisions": tl.decisions,
                     "targetRange": [o.target_seconds, o.target_seconds] if o.target_seconds else [round(min(prof.target_min, 0.85 * avail_s), 1), prof.target_max], "outro": {"fadeSeconds": 0.8}, "storyScore": round(tl.score, 3)}
         used = [x for x in srcs if any(sg.get("assetId") == x.id for sg in segs)] if multi else []
@@ -224,6 +230,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
                              {x.id: x.transcript for x in videos if x.transcript} if multi else ctx.transcript, ctx.entities,
                              o.caption_lang, o.caption_mode, None, "9:16", "REEL", o.location, creative, assets or None, o.title, o.subtitle)
         plan["captions"]["cues"] = retime_cues(plan["captions"]["cues"], end=plan["durationSeconds"]); plan["captions"]["enabled"] = bool(plan["captions"]["cues"])
+        if silent: plan["audio"]["preserveOriginal"] = False; plan["audio"]["sourceAudio"] = "off"
         if not o.captions:
             plan["captions"]["cues"] = []; plan["captions"]["enabled"] = False
         d = next((x for x in tl.decisions if x["type"] == "director"), None)
@@ -243,9 +250,9 @@ def build_plans(ctx: Ctx) -> List[dict]:
 
 
 # ------------------------------------------------------------------ mix + render + QC + re-edit
-def mix_for(plan: dict, src: str, audio: Optional[AudioProfile], ceiling_db: float = mixer.CEILING_DB, voiceover: bool = False):
+def mix_for(plan: dict, src: str, audio: Optional[AudioProfile], ceiling_db: float = mixer.CEILING_DB, voiceover: bool = False, live_on: bool = True):
     m = plan["audio"].get("music", {}); path = M.get_track(m["trackId"]).path if m.get("enabled") else None
-    mix = mixer.render_audio(plan, src, path, float(m.get("offset", 0.0)), presence_fn(audio), float(m.get("volume", 0.5)), ceiling_db=ceiling_db)
+    mix = mixer.render_audio(plan, src, path, float(m.get("offset", 0.0)), presence_fn(audio), float(m.get("volume", 0.5)), ceiling_db=ceiling_db, live_on=live_on)
     if voiceover and plan["captions"].get("cues"):
         from . import narration
         mix = narration.apply_voiceover(mix, plan["captions"]["cues"], plan["durationSeconds"], ceiling_db)
@@ -259,7 +266,7 @@ def render_reel(plan: dict, src: str, out_dir: str, o: Options, audio: Optional[
     primary = formats[0]; ceiling = mixer.CEILING_DB; report = None; history = []
     for attempt in range(max(0, o.qc_attempts) + 1):
         for s in plan["segments"]: s.pop("liveGainDb", None)                       # level matching is recomputed for the (possibly re-edited) clip set
-        mix = mix_for(plan, src, audio, ceiling, voiceover=o.voiceover)
+        mix = mix_for(plan, src, audio, ceiling, voiceover=o.voiceover, live_on=o.source_audio != "off")
         path = os.path.join(out_dir, FORMATS[primary]["file"])
         render_fn({**plan, "outputFormat": FORMATS[primary]["outputFormat"], "aspectRatio": FORMATS[primary]["aspect"]}, src, path, primary, out_dir, mix=mix)
         report = QC.run_qc(plan, path, out_dir, mix, primary) if o.qc else None

@@ -24,6 +24,9 @@ class Options:
     caption_lang: Optional[str] = None
     caption_mode: str = "sentence"            # sentence | word
     captions: bool = True                     # False (--no-captions): render with no caption overlay at all
+    source_audio: str = "keep"                # keep | off (--source-audio off): the recorded sound is never heard, decided on or cut around; the reel is picture + music (creative engine)
+    experimental_selection: bool = False      # --experimental-selection: turn on the opt-in selection terms (aesthetic, learned ranker, coverage). UNPROVEN on real reels: see docs/research EXP-012/014/016
+    color_match: bool = True                  # light colour match across the clips (creative/grade.py); --no-color-match to disable
     voiceover: bool = False                   # True (--voiceover): read the captions aloud (espeak-ng TTS), ducked into the mix; creative engine only
     target_seconds: Optional[float] = None    # None: the pacing profile decides (25-40 s); the classic engine falls back to 45
     scoring_config: Optional[str] = None

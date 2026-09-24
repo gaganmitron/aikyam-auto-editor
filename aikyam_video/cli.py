@@ -19,6 +19,9 @@ def main(argv=None) -> int:
         s.add_argument("--translate", action="store_true", help="whisper translate to English")
         s.add_argument("--caption-lang"); s.add_argument("--caption-mode", choices=["sentence", "word"], default="sentence")
         s.add_argument("--no-captions", action="store_true", help="render with no caption overlay at all")
+        s.add_argument("--source-audio", choices=["keep", "off"], default="keep", help="off: drop the recorded sound (narration, chanting) entirely; cuts follow the picture and the music, and music is always added (creative engine)")
+        s.add_argument("--experimental-selection", action="store_true", help="EXPERIMENTAL: also rank clips by look quality, the learned ranker and coverage of the whole recording (each has weak or synthetic evidence so far)")
+        s.add_argument("--no-color-match", action="store_true", help="do not colour-match the clips to each other (creative engine, ffmpeg renderer)")
         s.add_argument("--voiceover", action="store_true", help="read the captions aloud (offline espeak-ng TTS), ducked into the mix; creative engine only")
         s.add_argument("--target-seconds", type=float, default=None, help="reel length (default: chosen by the pacing profile, 25-40 s)")
         s.add_argument("--engine", choices=["creative", "classic"], default="creative", help="creative: story-aware editing engine; classic: greedy score-ordered planner")
@@ -28,6 +31,7 @@ def main(argv=None) -> int:
         s.add_argument("--qc-attempts", type=int, default=2, help="deterministic re-edits when QC fails")
         s.add_argument("--whisper-model", help="tiny|base|small|medium|large-v3 (env WHISPER_MODEL)")
         s.add_argument("--vision", default="auto", help="auto|clip|heuristic")
+        s.add_argument("--vision-model", help="open_clip model for --vision clip/auto, e.g. hf-hub:timm/ViT-B-16-SigLIP-256 (EXP-015: a small, unproven gain over the default)")
         s.add_argument("--scoring-config", help="JSON of scorer weights")
         s.add_argument("--festival-id", help="KG festival id, e.g. festival_9 (Dasara) -> festival template")
         s.add_argument("--music", choices=["auto", "off"], default="auto", help="auto: add a licensed, topic-matched track when it suits; off: original audio only")
@@ -84,14 +88,19 @@ def main(argv=None) -> int:
     if a.cmd == "serve":
         import uvicorn
         uvicorn.run("aikyam_video.api:app", factory=True, host=a.host, port=a.port); return 0
+    if a.vision_model: os.environ["VISION_MODEL"] = a.vision_model
     o = pipeline.Options(vision=a.vision, whisper_model=a.whisper_model, language=a.language, translate=a.translate,
-                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=not a.no_captions, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
+                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=not a.no_captions, source_audio=a.source_audio, color_match=not a.no_color_match, experimental_selection=a.experimental_selection, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
                          scoring_config=a.scoring_config, temple_id=a.temple_id, location=a.location, festival_id=a.festival_id,
                          music_track=a.music_track, music=a.music, music_volume=a.music_volume, renderer=a.renderer, transition=a.transition, transition_seconds=a.transition_seconds, planner=a.planner, audio_tagger=a.audio_tagger,
                          formats=[a.format] if a.format else ["reel", "square", "landscape"])
     o.music_web = a.music_web; o.hook_first = a.hook_first; o.title, o.subtitle = a.title, a.subtitle; o.edge_snap = not a.no_edge_snap; o.motion_dedupe = not a.no_motion_dedupe
     o.opening = a.opening; o.order = [x.strip() for x in a.order.split(",") if x.strip()] if a.order else None
-    o.allow_silent = a.allow_silent or bool(a.music_file)
+    o.allow_silent = a.allow_silent or bool(a.music_file) or a.source_audio == "off"          # quiet footage is fine when its sound is never used
+    if a.source_audio == "off" and a.engine == "classic":
+        print("error: --source-audio off needs the creative engine", file=sys.stderr); return 1
+    if a.source_audio == "off" and a.music == "off" and not a.music_file and not a.music_track:
+        print("error: --source-audio off with --music off would render a silent reel", file=sys.stderr); return 1
     if a.music_file:
         from . import music as _m
         try:

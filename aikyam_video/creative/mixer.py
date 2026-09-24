@@ -149,26 +149,32 @@ def limit(x: np.ndarray, ceiling_db: float = CEILING_DB, lookahead: float = 0.00
 
 
 def render_audio(plan: dict, src: str, music_path: Optional[str] = None, music_offset: float = 0.0, presence_fn=None,
-                 volume: float = 0.5, target_lufs: float = TARGET_LUFS, ceiling_db: float = CEILING_DB, match_levels: bool = True) -> MixResult:
-    if match_levels:
+                 volume: float = 0.5, target_lufs: float = TARGET_LUFS, ceiling_db: float = CEILING_DB, match_levels: bool = True, live_on: bool = True) -> MixResult:
+    """live_on=False: the recorded sound is dropped entirely -- the reel's sound is the music alone (nothing to duck under, nothing to cut through)."""
+    if match_levels and live_on:
         gains = level_match(plan, src)
         for s, g in zip(plan["segments"], gains): s.setdefault("liveGainDb", g)
-    bed = build_live(plan, src, presence_fn); live = bed["live"]; total = len(live); T = plan["durationSeconds"]
-    n_frames = int(np.ceil(T / FRAME)); presence = bed["presence"]
+    if live_on:
+        bed = build_live(plan, src, presence_fn); live = bed["live"]; total = len(live); presence_in = bed["presence"]
+    else:
+        total = int(round(plan["durationSeconds"] * SR)); live = np.zeros((total, 2), np.float32); presence_in = np.zeros(int(np.ceil(plan["durationSeconds"] / FRAME)))
+    T = plan["durationSeconds"]
+    n_frames = int(np.ceil(T / FRAME)); presence = presence_in
     L = _win_db(live, int(0.4 * SR), int(FRAME * SR)); L = np.concatenate([L, np.full(max(0, n_frames - len(L)), L[-1] if len(L) else -90.0)])[:n_frames]
     music = np.zeros_like(live); gain_db = np.zeros(n_frames); M0 = np.full(n_frames, -90.0)
     if music_path and total:
         mus = decode_range(music_path, music_offset, T)
         m_all = _win_db(mus, int(0.4 * SR), int(FRAME * SR)); M0 = np.concatenate([m_all, np.full(max(0, n_frames - len(m_all)), m_all[-1])])[:n_frames]
-        active = L > max(-55.0, float(np.median(L)) - 25.0)                              # the live sound is there (steady chanting has no quiet frames, so no percentile floor)
-        live_ref = float(np.median(L[active])) if active.any() else float(np.median(L))
-        base = live_ref - 8.0 + 20 * np.log10(max(volume, 1e-3))                          # music bed level when the live sound is quiet
-        margin = 8.0 + 8.0 * np.clip(presence, 0, 1)                                      # 8 dB (ambience) .. 16 dB (chant/speech/bhajan)
-        tgt = np.where(active, np.minimum(base, L - margin), base)
-        g = np.clip(tgt - M0, -40.0, 12.0); g = _smooth_db(g, attack=0.08, release=0.5)
-        # smoothing lags by up to the release time: never let it push the music ABOVE the ceiling implied by the margin
-        g = np.minimum(g, np.clip(np.where(active, L - margin, base) - M0, -40.0, 12.0) + 3.0)
-        gain_db = g
+        if live_on:                                                                     # duck under the recorded sound; with none there is nothing to duck under (gain_db stays 0 dB)
+            active = L > max(-55.0, float(np.median(L)) - 25.0)                              # the live sound is there (steady chanting has no quiet frames, so no percentile floor)
+            live_ref = float(np.median(L[active])) if active.any() else float(np.median(L))
+            base = live_ref - 8.0 + 20 * np.log10(max(volume, 1e-3))                          # music bed level when the live sound is quiet
+            margin = 8.0 + 8.0 * np.clip(presence, 0, 1)                                      # 8 dB (ambience) .. 16 dB (chant/speech/bhajan)
+            tgt = np.where(active, np.minimum(base, L - margin), base)
+            g = np.clip(tgt - M0, -40.0, 12.0); g = _smooth_db(g, attack=0.08, release=0.5)
+            # smoothing lags by up to the release time: never let it push the music ABOVE the ceiling implied by the margin
+            g = np.minimum(g, np.clip(np.where(active, L - margin, base) - M0, -40.0, 12.0) + 3.0)
+            gain_db = g
         env = np.interp(np.arange(total) / SR, np.arange(n_frames) * FRAME, gain_db)
         music = (mus[:total] * (10 ** (env / 20))[:, None]).astype(np.float32)
         fi, fo = int(0.8 * SR), int(1.5 * SR)
