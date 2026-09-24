@@ -2,11 +2,26 @@
 overlay title). It never renders and never invents timestamps: every proposal is snapped into an already-validated
 moment and re-validated against the source; on ANY problem we fall back to the deterministic plan."""
 from __future__ import annotations
-import json, os
+import json, os, time
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 from .models import Moment
 from .plan import PlanError, plan_edit, snap_to_moments, validate_plan
+
+
+def _with_retry(call, attempts: int = 3):
+    """Retry a Claude API call on transient rate-limit/overload errors (429/529/503) with
+    exponential backoff; any other error (or the last attempt) is raised straight through so
+    the existing deterministic-plan fallback in plan_with_llm/direct still applies."""
+    for i in range(attempts):
+        try:
+            return call()
+        except Exception as e:
+            status = getattr(e, "status_code", None)
+            transient = status in (429, 503, 529) or any(k in str(e).lower() for k in ("rate", "overloaded"))
+            if not transient or i == attempts - 1:
+                raise
+            time.sleep(min(2 ** i, 8))
 
 PROPOSAL_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -47,18 +62,18 @@ class AnthropicLLM(LLMClient):
 
     def propose(self, system, user, schema):
         try:
-            r = self.client.beta.messages.create(
+            r = _with_retry(lambda: self.client.beta.messages.create(
                 model=self.model, max_tokens=8000, system=system, betas=["server-side-fallback-2026-07-01"],
                 extra_body={"fallbacks": "default"},
                 thinking={"type": "adaptive"}, output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
-                messages=[{"role": "user", "content": user}])
+                messages=[{"role": "user", "content": user}]))
         except Exception as e:                                                        # noqa: BLE001 -- a rejected request shape (beta/thinking/structured-output params) -> the plain call
             if type(e).__name__ not in ("BadRequestError", "NotFoundError", "UnprocessableEntityError", "TypeError"):
                 raise
             import logging
             logging.getLogger("aikyam").warning(f"structured-output request rejected ({type(e).__name__}); retrying as a plain JSON request")
-            r = self.client.messages.create(model=self.model, max_tokens=8000, system=system + "\nReply with ONE JSON object that matches this JSON schema, nothing else:\n" + json.dumps(schema),
-                                            messages=[{"role": "user", "content": user}])
+            r = _with_retry(lambda: self.client.messages.create(model=self.model, max_tokens=8000, system=system + "\nReply with ONE JSON object that matches this JSON schema, nothing else:\n" + json.dumps(schema),
+                                            messages=[{"role": "user", "content": user}]))
             text = next((b.text for b in r.content if b.type == "text"), "")
             a, b = text.find("{"), text.rfind("}")
             if a < 0 or b < a:
