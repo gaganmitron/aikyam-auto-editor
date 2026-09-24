@@ -15,6 +15,16 @@ def _lab(shot: Shot, group: str) -> float:
     return max([shot.labels.get(k, 0.0) for k in L[group]] or [0.0])
 
 
+def opening_exposure(shot: Shot) -> float:
+    """A reel that opens on a dark frame reads as unfinished (measured: an OPENING at luma 39-65/255 slipped past QC, which only flags near-black).
+    Calibrated on 5 real clips (EXP-017): the murky interior that opened a reel = mean luma 0.19; the night-lit temple, night aarti, lit hall and daylight
+    exterior that make good openings = 0.36-0.41. 1.0 at mean luma >= 0.30, falling linearly to 0.10 at <= 0.14: dark footage can still open a reel, but only when nothing brighter fits."""
+    sl = getattr(shot, "slots", None)
+    if sl is None or not len(getattr(sl, "luma", []) or []):
+        return 1.0
+    return float(np.clip((float(np.mean(sl.luma)) - 0.14) / 0.16, 0.10, 1.0))
+
+
 def aggregates(shot: Shot, pop: Population, position: float) -> Dict[str, float]:
     """Scalar descriptors of a shot, all in 0..1. `position` = where the shot sits in the source (0 start .. 1 end)."""
     sl = shot.slots; e = pop.energy(sl); q = pop.slot_quality(sl)
@@ -39,4 +49,9 @@ def affinities(shot: Shot, pop: Population, position: float, opening: str = "est
         "CLIMAX": (lambda w: w["ritual"] * ritual + w["energy_peak"] * a["energy_peak"] + w["audio_peak"] * a["audio_peak"] + w["quality"] * a["quality"])(W["CLIMAX"]),
         "CLOSING": (lambda w: w["calm"] * calm + w["late"] * position + w["devotion_or_setting"] * max(devotion, setting) + w["wide"] * wide)(W["CLOSING"]),
     }
+    fit = CFG.get("beats", {}); bw = float(fit.get("weight", 0.0))
+    if bw and getattr(shot, "beats", None):                                       # what the shot is FOR in the story, as a soft distribution (never one hard label: 69% top-1 / 86% top-2)
+        for r in d:
+            d[r] = (1 - bw) * d[r] + bw * sum(w * shot.beats.get(b, 0.0) for b, w in fit["role_fit"].get(r, {}).items())
+    d["OPENING"] *= opening_exposure(shot)
     return {k: float(np.clip(v, 0, 1)) for k, v in d.items()}

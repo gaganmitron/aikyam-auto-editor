@@ -142,10 +142,12 @@ def build_plans(ctx: Ctx) -> List[dict]:
         if x.kind == "image":
             shots.append(x.shot)
         else:
-            sh = build_shots(x.path, x.moments, x.vision, None if silent else x.audio, top_k=16 if len(srcs) == 1 else 8, asset_id=x.id, edge_info=o.edge_snap, duration=x.info.duration, use_speech=not silent)
+            sh = build_shots(x.path, x.moments, x.vision, None if silent else x.audio, top_k=16 if len(srcs) == 1 else 8, asset_id=x.id, edge_info=o.edge_snap, duration=x.info.duration, use_speech=not silent, diverse=o.beats)
             if multi:
                 for k in sh: k.position = (k.start + k.end) / 2 / max(x.info.duration, 1e-9); k.id = f"{x.id}_{k.id}"     # moment ids repeat across videos: shot ids must not
             shots += sh
+    if not o.beats:
+        for k in shots: k.beats = {}                                          # --no-beats: story planning ignores story beats
     videos = [x for x in srcs if x.kind == "video"]
     avail_s = sum(x.info.duration for x in videos) + 3.0 * sum(1 for x in srcs if x.kind == "image")      # what the footage can supply: the reel-length target may not ask for more
     if o.order:
@@ -178,7 +180,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
             lab = {}
             for c in tl.clips:
                 for k, v in c.shot.labels.items(): lab[k] = max(lab.get(k, 0.0), v)
-            wt, wwhy = music_web.find(lab, prof.name, sum(c.length for c in tl.clips))
+            wt, wwhy = music_web.find(lab, prof.name, sum(c.length for c in tl.clips), n_download=12 if silent else 8, beat_bonus=0.20 if silent else 0.0, extra=["bhajan", "kirtan", "tabla"] if silent else None)      # picture + music only: prefer a track the cuts can land on (must outweigh the contemplative profile's 0.09 penalty on rhythmic music; a 0.25 CLAP-similarity gap still wins)
             if wt is not None: track, why = wt, wwhy
             else: why = f"{why}; {wwhy}"
         analysis = analyze_track(track.path) if track else None
@@ -216,6 +218,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
                  "subjectSpread": round(spread, 3), "calm": calm, "camera": {"mode": cam["mode"], "reason": cam["reason"]}, "subjectInFrame": round(cam["inFrame"], 3)}
             if i > 0 and c.transition_in: d["transitionIn"] = {k: c.transition_in[k] for k in ("type", "durationSeconds", "reason")}
             if i > 0 and c.audio_lead: d["audioLead"] = c.audio_lead
+            if c.shot.beats: d["beat"] = max(c.shot.beats, key=c.shot.beats.get); d["beats"] = {k: round(v, 2) for k, v in sorted(c.shot.beats.items(), key=lambda kv: -kv[1])[:3]}      # what this clip IS in the story
             if multi: d["assetId"] = S.id; d["kind"] = "video"
             segs.append(d); probes.append((S.path, (c.start + c.end) / 2, not getattr(S.info, "hdr", False)))      # HDR footage is measured before tone-mapping: leave it alone
         if o.color_match and o.renderer == "ffmpeg":                  # only the ffmpeg renderer draws the grade

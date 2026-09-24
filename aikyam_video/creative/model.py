@@ -43,6 +43,7 @@ class Shot:
     size: Optional[List[int]] = None              # images: [width, height] px
     cuts: List[float] = field(default_factory=list)                     # absolute source times of hard cuts in/around the window (coarse)
     pauses: List[List[float]] = field(default_factory=list)             # absolute [start, end] of pauses in the live sound (relative to the shot's own level)
+    beats: Dict[str, float] = field(default_factory=dict)               # story-beat distribution of the window (beats.py); {} = unknown
 
     @property
     def length(self) -> float:

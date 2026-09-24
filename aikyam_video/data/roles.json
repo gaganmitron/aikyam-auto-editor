@@ -108,6 +108,45 @@
   "skip_penalty": 0.25,
   "beam": 48,
   "min_affinity_percentile": 35,
-  "coverage": 0.0
+  "coverage": 0.0,
+  "beat_repeat_penalty": 0.15
+ },
+ "beats": {
+  "_comment": "Editorial knowledge, not learned: which story beats serve which arc role (0..1). weight = share of a role's affinity that comes from beat fit (0 disables).",
+  "weight": 0.25,
+  "role_fit": {
+   "OPENING": {
+    "establishing": 1.0,
+    "detail": 0.4,
+    "approach": 0.3
+   },
+   "BUILDUP": {
+    "approach": 1.0,
+    "prayer": 0.7,
+    "community": 0.6,
+    "establishing": 0.3
+   },
+   "RITUAL": {
+    "ritual_action": 1.0,
+    "offering": 0.9,
+    "music": 0.4
+   },
+   "REVEAL": {
+    "darshan": 1.0,
+    "detail": 0.5,
+    "prayer": 0.3
+   },
+   "CLIMAX": {
+    "procession": 1.0,
+    "ritual_action": 0.7,
+    "music": 0.6
+   },
+   "CLOSING": {
+    "establishing": 0.7,
+    "prayer": 0.6,
+    "detail": 0.6,
+    "darshan": 0.4
+   }
+  }
  }
 }

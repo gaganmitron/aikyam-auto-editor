@@ -92,22 +92,54 @@ def partition_moments(moments: Sequence[Moment], min_len: float = 3.0) -> List[M
     return sorted(out, key=lambda m: m.start)
 
 
+def moment_beats(m, vision) -> Dict[str, float]:
+    """Story-beat distribution of a moment: time-weighted mean over the scenes it covers ({} when any scene has none, e.g. no image-text model)."""
+    sv = [v for v in vision if v.end > m.start and v.start < m.end]
+    if not sv or not all(v.vision.beats for v in sv):
+        return {}
+    wts = [max(min(v.end, m.end) - max(v.start, m.start), 1e-3) for v in sv]; out: Dict[str, float] = {}
+    for v, w in zip(sv, wts):
+        for k, c in v.vision.beats.items(): out[k] = out.get(k, 0.0) + c * w / sum(wts)
+    return out
+
+
+def diverse_top(moments, beats_of, top_k: int, reserve: int = 4):
+    """The best `top_k` moments by score, EXCEPT that up to `reserve` slots go to the best moment of any story beat the score ranking would leave out
+    (EXP-018: wide establishing shots score low on devotional relevance, so they never reached the planner's pool; the beat-fit cannot pick what is not there).
+    A beat only counts when it clearly dominates its moment (share >= 0.4). No beats known -> identical to the plain top_k."""
+    ranked = sorted(moments, key=lambda m: (-m.score, m.start)); head = ranked[:max(0, top_k - reserve)]
+    dom = lambda m: (lambda b: max(b, key=b.get) if b else None)(beats_of(m))
+    have = {dom(m) for m in head} - {None}; extra = []
+    for m in ranked[len(head):]:
+        b = beats_of(m); d = dom(m)
+        if d is not None and d not in have and b[d] >= 0.4 and len(extra) < reserve:
+            extra.append(m); have.add(d)
+    rest = [m for m in ranked[len(head):] if m not in extra]
+    return (head + extra + rest)[:top_k]
+
+
 def build_shots(src: str, moments: Sequence[Moment], vision: Sequence[SceneVision], audio: Optional[AudioProfile], top_k: int = 16, asset_id: str = "a1", edge_info: bool = True,
-                duration: Optional[float] = None, use_speech: bool = True) -> List[Shot]:
+                duration: Optional[float] = None, use_speech: bool = True, diverse: bool = True) -> List[Shot]:
     """One Shot per validated moment (best `top_k` by score): labels, mean embedding, event means and per-slot features."""
     shots = []; ml_cuts = _mlx.cuts(src) if edge_info else None; vad = _mlx.speech(src) if (edge_info and use_speech) else None       # neural evidence, once per file (None -> heuristics); use_speech=False: the recorded voice is not evidence for anything
-    for m in sorted(partition_moments(moments), key=lambda m: (-m.score, m.start))[:top_k]:
+    parts = partition_moments(moments)
+    chosen = diverse_top(parts, lambda m: moment_beats(m, vision), top_k) if diverse else sorted(parts, key=lambda m: (-m.score, m.start))[:top_k]
+    for m in sorted(chosen, key=lambda m: (-m.score, m.start)):
         sv = [v for v in vision if v.end > m.start and v.start < m.end]
         labels: Dict[str, float] = {}                                                                   # time-weighted mean over the scenes the window covers: the labels describe the WINDOW, not its luckiest frame
         wts = [max(min(v.end, m.end) - max(v.start, m.start), 1e-3) for v in sv]
         for v, w in zip(sv, wts):
             for k, c in v.vision.labels.items(): labels[k] = labels.get(k, 0.0) + c * w / sum(wts)
         embs = [np.asarray(v.vision.embedding) for v in sv if v.vision.embedding]
+        bts: Dict[str, float] = {}
+        if sv and all(v.vision.beats for v in sv):                                                      # what the window is FOR in the story, time-weighted like the labels
+            for v, w in zip(sv, wts):
+                for k, c in v.vision.beats.items(): bts[k] = bts.get(k, 0.0) + c * w / sum(wts)
         emb = None
         if embs:
             e = np.mean(embs, axis=0); emb = (e / (np.linalg.norm(e) + 1e-9)).tolist()
         ev = {k: audio.event_score(k, m.start, m.end) for k in (audio.events if audio is not None else {})}
-        sh = Shot(m.momentId, m.start, m.end, m.momentId, m.score, labels, [e.entityId for e in m.entities], emb, analyze_window(src, m.start, m.end, audio), ev, asset_id=asset_id)
+        sh = Shot(m.momentId, m.start, m.end, m.momentId, m.score, labels, [e.entityId for e in m.entities], emb, analyze_window(src, m.start, m.end, audio), ev, asset_id=asset_id, beats=bts)
         if edge_info:                                                                                   # real cuts and pauses around the window (edge snapping)
             lo, hi = max(0.0, m.start - 1.5), (min(duration, m.end + 1.5) if duration else m.end + 1.5)
             sh.cuts = [c for c in ml_cuts if lo <= c <= hi] if ml_cuts is not None else [c for c in _edges.detect_cuts(src, lo, hi)]      # TransNetV2 when available, else the frame-difference detector
@@ -188,11 +220,16 @@ class Population:
         return 0.5 * self.rank("motion", np.asarray(sl.motion)) + 0.5 * self.rank("rms_db", np.asarray(sl.rms_db))
 
 
-def best_window(shot: Shot, pop: Population, length: float, snap=None) -> Tuple[float, float, float]:
+def best_window(shot: Shot, pop: Population, length: float, snap=None, lit: bool = False) -> Tuple[float, float, float]:
     """Best contiguous [a, a+length) inside the shot maximising mean slot quality; (start, end, mean quality).
     The first and last slot count double: they are where the eye lands, so they must be sharp and steady.
-    `snap(t)` may move the OUT point to a quiet moment (never past the shot)."""
-    sl = shot.slots; q = pop.slot_quality(sl); n = len(q); k = max(1, int(round(min(length, shot.length) / HOP)))
+    `snap(t)` may move the OUT point to a quiet moment (never past the shot).
+    lit=True (an OPENING): slots are also weighted by brightness (0.10 at luma <= 0.14 rising to 1.0 at >= 0.30, EXP-017): a shot whose average is fine can still hold dark seconds,
+    and quality alone (sharpness, steadiness, contrast) happily lands the opening on them."""
+    sl = shot.slots; q = pop.slot_quality(sl); n = len(q)
+    if lit and len(sl.luma) == n:
+        q = q * np.clip((np.asarray(sl.luma, float) - 0.14) / 0.16, 0.10, 1.0)
+    k = max(1, int(round(min(length, shot.length) / HOP)))
     if n <= k:
         a, b = shot.start, shot.end
         return a, b, float(q.mean())

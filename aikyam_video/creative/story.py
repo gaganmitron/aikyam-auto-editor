@@ -142,6 +142,8 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
                         inc += S["chronology_bonus"] if s.start > prev_same.start else -S["chronology_bonus"]
                     elif s.start > prev_same.start:                                           # multi-asset: byte-identical to the pre-EXP-001 original -- forward-only, divided by n_t, its own pinned constant (not coupled to the single-asset value)
                         inc += S["chronology_bonus_multi_asset"] / max(n_t, 1)
+                if chosen and s.beats and chosen[-1][1].beats:                                  # same beat back to back = repetition even when the pictures differ
+                    inc -= S.get("beat_repeat_penalty", 0.0) * sum(s.beats.get(b, 0.0) * chosen[-1][1].beats.get(b, 0.0) for b in s.beats)
                 if cov_w and s.id in ids:                                                    # after the quality gate, like chronology: ranks candidates that already clear the bar, never rescues one that doesn't
                     inc += cov_w * float((Wt * np.maximum(R[:, ids[s.id]] - cur, 0.0)).sum())
                 nxt.append((score + inc, chosen + [(role, s)]))
@@ -204,7 +206,7 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
 
     clips: List[Clip] = []
     for ci, ((role, s), length) in enumerate(zip(best, L)):
-        a, b, q = best_window(s, pop, float(length), snap)
+        a, b, q = best_window(s, pop, float(length), snap, lit=(role == "OPENING"))
         a0, b0, locked = a, b, False
         if edger is not None and s.kind == "video":                                            # real cuts / pauses beat the fixed slot grid
             a, b, einfo = edger(s, a, b, max(1.5, 0.75 * (b - a)), min(profile.max_shot, 1.25 * (b - a)), first=ci == 0, last=ci == len(best) - 1)
@@ -236,9 +238,19 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
             if not cands:
                 break
             fresh = [x for x in cands if not any(is_duplicate(x, c.shot, motion_dedupe) for c in clips)]     # prefer footage that isn't a near-duplicate of anything already picked
-            cand = max(fresh or cands, key=lambda x: (val_any(x), x.id))                                    # only reach for a duplicate (repeat) when nothing fresh is left
             free = [r for r in ROLES if r not in {c.role for c in clips}] or list(REPEAT)
             if not free or len(clips) >= min(9 if target_s else 7, max_clips or 99):
+                break
+
+            def beat_overlap(x):                                                                             # how much x would repeat the beat of the clips it would sit between
+                if not x.beats: return 0.0
+                ri = ROLES.index(max(free, key=lambda r: aff[x.id][r]))
+                before = [c for c in clips if ROLES.index(c.role) <= ri]; after = [c for c in clips if ROLES.index(c.role) > ri]
+                nb = ([max(before, key=lambda c: ROLES.index(c.role))] if before else []) + ([min(after, key=lambda c: ROLES.index(c.role))] if after else [])
+                return max([sum(x.beats.get(b, 0.0) * c.shot.beats.get(b, 0.0) for b in x.beats) for c in nb if c.shot.beats] or [0.0])
+            bp = S.get("beat_repeat_penalty", 0.0)
+            cand = max(fresh or cands, key=lambda x: (val_any(x) - bp * beat_overlap(x), x.id))              # only reach for a duplicate (repeat) when nothing fresh is left
+            if bp and beat_overlap(cand) > 0.6 and total(clips) >= floor - 3.0:                              # the only footage left repeats the neighbouring beat and the reel is nearly long enough: stop
                 break
             role = max(free, key=lambda r: aff[cand.id][r]); L2 = float(min(profile.max_shot, cand.length, max(profile.min_shot, floor - total(clips) + est_ov)))
             a2, b2, q2 = best_window(cand, pop, L2, snap); before = total(clips)

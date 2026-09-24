@@ -1,0 +1,11 @@
+{
+ "_note": "Story-beat type per benchmark frame, written by the assistant viewing each frame (subjective; ambiguous cases exist, e.g. golden_075 could be approach). Types: establishing, approach, ritual_action, offering, procession, prayer, darshan, community, music, detail.",
+ "golden_015": "establishing", "golden_045": "establishing", "golden_075": "prayer", "golden_105": "ritual_action", "golden_135": "ritual_action",
+ "golden_165": "procession", "golden_195": "procession", "golden_225": "procession", "golden_255": "darshan", "golden_285": "detail",
+ "golden_315": "establishing", "golden_345": "approach", "golden_375": "establishing", "golden_405": "prayer", "golden_435": "music",
+ "golden_465": "establishing", "golden_495": "community", "golden_525": "establishing", "golden_555": "ritual_action", "golden_585": "procession",
+ "golden_615": "ritual_action", "golden_645": "establishing",
+ "janakpur_003": "ritual_action", "janakpur_010": "ritual_action", "janakpur_017": "ritual_action", "janakpur_024": "ritual_action",
+ "janakpur_031": "ritual_action", "janakpur_038": "ritual_action", "janakpur_045": "ritual_action",
+ "kolkata_002": "ritual_action", "kolkata_007": "ritual_action", "kolkata_012": "darshan", "kolkata_017": "ritual_action", "kolkata_022": "darshan", "kolkata_027": "darshan"
+}
