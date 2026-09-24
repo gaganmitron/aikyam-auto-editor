@@ -1,0 +1,8 @@
+{
+ "_note": "Reel-worthiness 1-5 for the same 35 frames as bench_labels_truth.json. Rubric: clear subject, good composition, devotionally meaningful, no text overlay/credits, not blurred/cluttered. Written by the assistant viewing the frames: subjective, development-time only, and it will contain my own aesthetic bias.",
+ "golden_015": 5, "golden_045": 3, "golden_075": 4, "golden_105": 3, "golden_135": 3, "golden_165": 5, "golden_195": 3,
+ "golden_225": 4, "golden_255": 4, "golden_285": 2, "golden_315": 3, "golden_345": 3, "golden_375": 4, "golden_405": 5,
+ "golden_435": 4, "golden_465": 3, "golden_495": 3, "golden_525": 5, "golden_555": 4, "golden_585": 5, "golden_615": 3, "golden_645": 2,
+ "janakpur_003": 4, "janakpur_010": 5, "janakpur_017": 5, "janakpur_024": 5, "janakpur_031": 4, "janakpur_038": 4, "janakpur_045": 3,
+ "kolkata_002": 3, "kolkata_007": 4, "kolkata_012": 3, "kolkata_017": 4, "kolkata_022": 2, "kolkata_027": 5
+}
