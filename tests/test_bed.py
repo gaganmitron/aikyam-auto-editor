@@ -44,3 +44,12 @@ def test_cli_guards_for_bed(capsys):
     from aikyam_video.cli import main
     assert main(["process", "x.mp4", "--source-audio", "bed", "--engine", "classic"]) == 1
     assert "creative engine" in capsys.readouterr().err
+
+
+def test_bed_is_picked_across_several_recordings_from_the_file_it_lives_in():
+    poor = _profile(D=300.0); rich = _profile(D=300.0); short = _profile(D=20.0); n = len(rich.rms_db)
+    rich.events = {"bhajan": np.array([0.9 if 100 <= i * rich.hop < 180 else 0.0 for i in range(n)])}
+    s, sc, why, path = bed.pick_across([(poor, "a.mp4"), (rich, "b.mp4"), (short, "c.mp4")], 40.0)
+    assert path == "b.mp4" and 100 <= s <= 140 and sc > 0.5                       # the chanting recording, not the first one and not the one too short for the reel
+    assert bed.pick_across([(short, "c.mp4")], 40.0)[3] == "c.mp4"                # nothing better: the short one is still used (whole audio)
+    assert bed.pick_across([(None, "x.mp4")], 40.0) is None

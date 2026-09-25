@@ -236,8 +236,9 @@ def build_plans(ctx: Ctx) -> List[dict]:
                              o.caption_lang, o.caption_mode, None, "9:16", "REEL", o.location, creative, assets or None, o.title, o.subtitle)
         plan["captions"]["cues"] = retime_cues(plan["captions"]["cues"], end=plan["durationSeconds"]); plan["captions"]["enabled"] = bool(plan["captions"]["cues"])
         if silent: plan["audio"]["preserveOriginal"] = False; plan["audio"]["sourceAudio"] = o.source_audio
-        if o.source_audio == "bed" and ctx_audio is not None and len(ctx_audio.rms_db):
-            bs, bsc, bwhy = bed.pick_window(ctx_audio, plan["durationSeconds"] + 1.0); plan["audio"]["bed"] = {"start": bs, "score": bsc, "why": bwhy}
+        if o.source_audio == "bed":                                                        # the most music-like stretch over ALL the recordings, from the file it lives in
+            pick = bed.pick_across([(x.audio, x.path) for x in videos if x.kind == "video"] if multi else [(ctx_audio, ctx.src)], plan["durationSeconds"] + 1.0)
+            if pick: plan["audio"]["bed"] = {"start": pick[0], "score": pick[1], "why": pick[2], "path": os.path.abspath(pick[3])}
         if not o.captions:
             plan["captions"]["cues"] = []; plan["captions"]["enabled"] = False
         d = next((x for x in tl.decisions if x["type"] == "director"), None)
@@ -275,7 +276,7 @@ def render_reel(plan: dict, src: str, out_dir: str, o: Options, audio: Optional[
     primary = formats[0]; ceiling = mixer.CEILING_DB; report = None; history = []
     for attempt in range(max(0, o.qc_attempts) + 1):
         for s in plan["segments"]: s.pop("liveGainDb", None)                       # level matching is recomputed for the (possibly re-edited) clip set
-        bp = bed.extract(src, plan["audio"]["bed"]["start"], plan["durationSeconds"] + 1.0, os.path.join(out_dir, "source_bed.wav")) if plan["audio"].get("sourceAudio") == "bed" and plan["audio"].get("bed") else None
+        bp = bed.extract(plan["audio"]["bed"].get("path", src), plan["audio"]["bed"]["start"], plan["durationSeconds"] + 1.0, os.path.join(out_dir, "source_bed.wav")) if plan["audio"].get("sourceAudio") == "bed" and plan["audio"].get("bed") else None
         mix = mix_for(plan, src, audio, ceiling, voiceover=o.voiceover, live_on=not o.silent_source, bed_path=bp)
         path = os.path.join(out_dir, FORMATS[primary]["file"])
         render_fn({**plan, "outputFormat": FORMATS[primary]["outputFormat"], "aspectRatio": FORMATS[primary]["aspect"]}, src, path, primary, out_dir, mix=mix)

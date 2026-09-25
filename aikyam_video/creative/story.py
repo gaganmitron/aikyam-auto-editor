@@ -219,15 +219,18 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
         clips.append(Clip(s, a, b, role, locked_end=locked, why=f"{role.lower()}: affinity {aff[s.id][role]:.2f}, quality {q:.2f}, labels {sorted(k for k, v in s.labels.items() if v >= 0.5)[:3]}"))
         dec.append({"type": "select", "role": role, "shot": s.id, "source": [round(a, 2), round(b, 2)], "affinity": round(aff[s.id][role], 3),
                     "quality": round(q, 3), "labels": {k: round(v, 2) for k, v in sorted(s.labels.items(), key=lambda kv: -kv[1])[:3]}})
-    for i in range(len(clips)):                                       # windows lie inside their own shots, which overlap <= 0.5 s: resolve any residue
-        for j in range(i + 1, len(clips)):
-            if clips[i].shot.asset_id != clips[j].shot.asset_id or clips[i].shot.kind == "image":
-                continue
-            ov = _overlap((clips[i].start, clips[i].end), (clips[j].start, clips[j].end))
-            if ov > 0:
-                loser = clips[i] if clips[i].shot.score < clips[j].shot.score else clips[j]
-                if loser.start < (clips[j] if loser is clips[i] else clips[i]).start: loser.end = round(loser.end - ov, 3)
-                else: loser.start = round(loser.start + ov, 3)
+    def resolve_overlaps():                                           # windows lie inside their own shots, which overlap <= 0.5 s (and edge snapping may move an edge a little): resolve any residue
+        for i in range(len(clips)):
+            for j in range(i + 1, len(clips)):
+                if clips[i].shot.asset_id != clips[j].shot.asset_id or clips[i].shot.kind == "image":
+                    continue
+                ov = _overlap((clips[i].start, clips[i].end), (clips[j].start, clips[j].end))
+                if ov > 0:
+                    loser = clips[i] if clips[i].shot.score < clips[j].shot.score else clips[j]
+                    if loser.start < (clips[j] if loser is clips[i] else clips[i]).start: loser.end = round(loser.end - ov, 3)
+                    else: loser.start = round(loser.start + ov, 3)
+
+    resolve_overlaps()
     clips = [c for c in clips if c.length >= 1.0]
     # ---- a Reel is >= MIN_REEL_S if the footage allows it: the duplicate rules may have left too little (a repetitive ritual in one take). Add the best UNUSED, non-overlapping footage,
     #      repeats of the movement allowed, and say so in the plan.
@@ -260,6 +263,7 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
             a2, b2, q2 = best_window(cand, pop, L2, snap); before = total(clips)
             clips.append(Clip(cand, a2, b2, role, why=f"fill: the reel was {before:.1f}s, under {floor:.0f}s")); used.add(cand.id)
             clips.sort(key=lambda c: ROLES.index(c.role)); dec.append({"type": "fill", "shot": cand.id, "role": role, "seconds": round(b2 - a2, 1), "why": f"reel would be {before:.1f}s, under {floor:.0f}s"})
+    resolve_overlaps(); clips = [c for c in clips if c.length >= 1.0]                                          # the top-up can add a clip that touches an edge-snapped neighbour of the same take
     asc = len({c.shot.asset_id for c in clips}) == 1 and all(clips[k].start < clips[k + 1].start for k in range(len(clips) - 1))
     return Timeline(clips, profile.name, [c.role for c in clips], "source" if asc else "narrative", dec, float(best_score), {"sim_floor": s0, "T": T})
 

@@ -36,6 +36,16 @@ def pick_window(audio, T: float) -> Tuple[float, float, str]:
     return round(bs, 2), round(best, 3), f"most music-like {T:.0f}s of the source audio (score {best:.2f}) starting at {bs:.0f}s"
 
 
+def pick_across(cands, T: float):
+    """(start, score, why, path) of the best T-second stretch over SEVERAL recordings [(AudioProfile, path)]: a long recording always beats one too short for the reel
+    (whose 'whole audio' answer scores 0 by construction); None when there is no audio at all."""
+    picks = [(*pick_window(a, T), p, float(len(a.rms_db)) * a.hop > T + 1.0) for a, p in cands if a is not None and len(a.rms_db)]
+    if not picks:
+        return None
+    s, sc, why, path, _ = max(picks, key=lambda t: (t[4], t[1]))
+    return s, sc, why, path
+
+
 def extract(src: str, start: float, seconds: float, out_wav: str) -> str:
     """The chosen stretch as a 48 kHz stereo wav (the mixer's music path decodes any audio file)."""
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{seconds:.3f}", "-i", src, "-vn", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", out_wav], check=True)
