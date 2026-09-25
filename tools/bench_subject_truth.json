@@ -1,0 +1,192 @@
+[
+{
+"n": 0,
+"id": "golden_00470.1",
+"path": "inputs/golden_temple_full.webm",
+"t": 472.1,
+"subject": null
+},
+{
+"n": 1,
+"id": "golden_00215.2",
+"path": "inputs/golden_temple_full.webm",
+"t": 217.2,
+"subject": [
+0.3,
+0.72
+]
+},
+{
+"n": 2,
+"id": "golden_00590.0",
+"path": "inputs/golden_temple_full.webm",
+"t": 592.0,
+"subject": [
+0.16,
+0.8
+]
+},
+{
+"n": 3,
+"id": "golden_00621.2",
+"path": "inputs/golden_temple_full.webm",
+"t": 623.2,
+"subject": [
+0.3,
+0.75
+]
+},
+{
+"n": 4,
+"id": "golden_00348.6",
+"path": "inputs/golden_temple_full.webm",
+"t": 350.6,
+"subject": null
+},
+{
+"n": 5,
+"id": "golden_00277.7",
+"path": "inputs/golden_temple_full.webm",
+"t": 279.7,
+"subject": null
+},
+{
+"n": 6,
+"id": "golden_00110.4",
+"path": "inputs/golden_temple_full.webm",
+"t": 112.4,
+"subject": [
+0.08,
+0.82
+]
+},
+{
+"n": 7,
+"id": "golden_00554.8",
+"path": "inputs/golden_temple_full.webm",
+"t": 556.8,
+"subject": [
+0.3,
+0.92
+]
+},
+{
+"n": 8,
+"id": "darshan_00346.8",
+"path": "inputs/tirumala_darshan_2021.mp4",
+"t": 348.8,
+"subject": [
+0.3,
+0.88
+]
+},
+{
+"n": 9,
+"id": "darshan_00022.7",
+"path": "inputs/tirumala_darshan_2021.mp4",
+"t": 24.7,
+"subject": [
+0.24,
+0.54
+]
+},
+{
+"n": 10,
+"id": "darshan_00067.7",
+"path": "inputs/tirumala_darshan_2021.mp4",
+"t": 69.7,
+"subject": [
+0.35,
+0.73
+]
+},
+{
+"n": 11,
+"id": "darshan_00223.5",
+"path": "inputs/tirumala_darshan_2021.mp4",
+"t": 225.5,
+"subject": [
+0.0,
+0.34
+]
+},
+{
+"n": 12,
+"id": "darshan_00172.1",
+"path": "inputs/tirumala_darshan_2021.mp4",
+"t": 174.1,
+"subject": [
+0.08,
+0.53
+]
+},
+{
+"n": 13,
+"id": "darshan_00117.9",
+"path": "inputs/tirumala_darshan_2021.mp4",
+"t": 119.9,
+"subject": null
+},
+{
+"n": 14,
+"id": "drone_00350.2",
+"path": "inputs/tirumala_drone_2025.mp4",
+"t": 352.2,
+"subject": null
+},
+{
+"n": 15,
+"id": "drone_00160.0",
+"path": "inputs/tirumala_drone_2025.mp4",
+"t": 162.0,
+"subject": null
+},
+{
+"n": 16,
+"id": "drone_00283.1",
+"path": "inputs/tirumala_drone_2025.mp4",
+"t": 285.1,
+"subject": null
+},
+{
+"n": 17,
+"id": "drone_00192.6",
+"path": "inputs/tirumala_drone_2025.mp4",
+"t": 194.6,
+"subject": null
+},
+{
+"n": 18,
+"id": "drone_00256.0",
+"path": "inputs/tirumala_drone_2025.mp4",
+"t": 258.0,
+"subject": null
+},
+{
+"n": 19,
+"id": "drone_00222.0",
+"path": "inputs/tirumala_drone_2025.mp4",
+"t": 224.0,
+"subject": null
+},
+{
+"n": 20,
+"id": "kolkata_00015.2",
+"path": "inputs/bench_temple_aarti_kolkata.webm",
+"t": 17.2,
+"subject": [
+0.42,
+0.78
+]
+},
+{
+"n": 21,
+"id": "kolkata_00005.8",
+"path": "inputs/bench_temple_aarti_kolkata.webm",
+"t": 7.8,
+"subject": [
+0.4,
+0.8
+]
+}
+]

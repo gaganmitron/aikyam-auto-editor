@@ -1132,3 +1132,79 @@ Tally over 17 stored reels: `subject_in_frame` 16, `weak_shots` 12, `role_label_
   an arati clip was compared with an arati scene. Anchors must now be unambiguous. Warnings on 13 reels: 12 -> 1; the remaining one is the Diwali reel that really has fireworks.
 **Not verified:** whether the reels themselves improve: this changes what QC reports, not what is selected. The selection weight of quality (`0.5 + 0.5*quality`) is untouched
 because the metric that said it was failing was wrong. **Next:** the clip quality gate needs a real signal: rate clips from several reels by eye, then test which measure predicts the rating.
+
+## EXP-021 — Clip quality gate: which measurable signal predicts a clip worth keeping? (inconclusive; nothing shipped to selection)
+
+**Method.** `tools/bench_gate.py`: 70 random 4 s windows, each inside ONE shot (no detected cut), stratified over 5 videos (14 each: Golden Temple 11 min, Tirumala 2021 handheld, Tirumala
+2025 drone, Janakpur and Kolkata aarti). Rated 1-5 by me from 4-frame contact strips BEFORE looking at any measurement; criterion = footage quality (sharp, steady, exposed, composed,
+no text/clutter), not devotional content. Ratings `tools/bench_gate_ratings.json` (28 windows = 2, 24 = 3, 14 = 4, 3 = 5, 1 = 1). Signals: the pipeline's own window quality, per-slot
+minima, dead-slot share, sharpness, jitter, motion, exposure, blown-out share, SigLIP aesthetic / no_text.
+**Result (within-video Spearman, mean over the 3 videos whose ratings vary; Janakpur is all 2 and Kolkata all 3, so they cannot be ranked).**
+| signal | within-video rho |
+|---|---|
+| pipeline quality (mean slot q) | +0.28 (per video 0.15 / 0.33 / 0.35) |
+| lowest-luma second in the window | +0.41 |
+| log median sharpness | +0.37 (but pooled across videos -0.33: the scale differs per video) |
+| jitter, motion, contrast, concentration, SigLIP aesthetic | about 0 or negative |
+| ridge on {min luma, sharpness, min slot q}, videos held out | +0.41 |
+| ridge on all 15 signals, videos held out | +0.13 (overfits) |
+**The one clear result is a hard rule, not a ranking:** windows containing a dead slot (`dead_slots`, shipped in EXP-019): 11 of 70, 8 of them rated <= 2 (73% against a 41% base rate),
+93% of the acceptable windows kept. Rejecting on min slot quality < 0.10: 8 windows, 6 bad. Everything else is within noise for 42 usable windows (standard error of a mean rho about 0.12,
+gaps between 0.28 and 0.41 are not distinguishable).
+**Limits, stated plainly.** One rater (me). Stills cannot show shake, so the ~0 for jitter says nothing about jitter. The rater criterion and SigLIP disagree on the flare-washed Janakpur
+aarti (pooled aesthetic rho -0.40): a viewer may accept that look. About 8 windows contain a cut the detector missed (dissolves). 42 windows carry the ranking evidence.
+**Decision.** No change to selection weights (`0.5 + 0.5*quality`): nothing beats the current measure by a margin this benchmark can resolve, and combining more signals made it worse
+on held-out videos. The gate that is justified by data is the dead-footage rule that already ships.
+**Next.** Ratings from a second rater, and video clips (not stills) to rate shake; then re-test "min luma + sharpness + min slot quality" against the current quality term.
+
+## EXP-022 — Framing: is the 60% window too wide? (no change; the subject tracker is the limit)
+
+Question: every clip of the Tirumala reel is a partial-width window (52-60% of the source) over blurred fill, so the real picture fills ~55% of the 9:16 frame. Would a tighter window look better?
+**Look:** same plan rendered at window cap 0.45 / 0.60 / 1.00 (`layout.WINDOW_MAX`). At 1.00 the window is unchanged (the cap is not what limits it: `1.25 x measured subject spread` is), so 0.60 and 1.00 are the
+same picture. At 0.45 the picture is visibly larger with less blur, and on the 4 frames compared the gopuram and the tank stay whole.
+**Measure:** share of tracked-subject samples inside the window (`camera_path.inFrame`), 19 clips from 3 reels:
+| window | 0.32 (pure crop) | 0.40 | 0.45 | 0.50 | 0.60 |
+|---|---|---|---|---|---|
+| mean in frame | 0.04 | 0.12 | 0.21 | 0.43 | 0.91 |
+| clips with >= 0.8 | 0% | 0% | 0% | 0% | 85% |
+**Reading.** By the tracker, 0.60 is the smallest window that keeps the subject, for EVERY clip (no clip reaches 0.8 at 0.50; best 0.73). The tracker's extent is ~0.5 of the frame width on
+almost all footage: a saliency spread, not a subject. It cannot say that one clip's subject is compact and another's is not, so a per-clip adaptive window built on it would change nothing, and the
+tighter look that seemed better by eye cannot be told apart from cutting off the subject. **No change to layout.**
+**What would move this:** a semantic subject locator (a detector or a text-prompted box for "gopuram / deity / procession / lamp") with a hand-checked benchmark of subject boxes, then a
+window = the box + margin. Not built; CPU cost and RAM (5.7 GB) unmeasured.
+
+## EXP-023 — A subject locator for framing (negative: nothing beats a centre crop on this benchmark)
+
+**Benchmark.** `tools/bench_subject_truth.json`: 22 frames from 5 videos, the horizontal range a viewer must see, drawn by me on frames with a 0-100% ruler; 12 have a compact subject
+(width 0.30-0.74), 10 are wide scenes (drone landscapes, stage, forest) with none. Score of a method = the window (width W, centred where the method says) vs the true range.
+**Where the window is centred** (mean fraction of the subject inside / share of frames with the subject fully inside):
+| method | W=0.45 | W=0.60 |
+|---|---|---|
+| perfect centre (oracle) | 0.90 / 67% | 0.98 / 75% |
+| centre crop | 0.75 / 17% | 0.88 / 50% |
+| pipeline tracker (face / motion / edge energy) | 0.77 / 42% | 0.87 / 50% |
+| SigLIP crop scoring (devotional relevance of each window) | 0.63 / 8% | 0.80 / 33% |
+| OWL-ViT base (7 temple prompts, box centres) | 0.69 / 25% | 0.83 / 42% |
+**How wide the subject is:** tracker extent vs true width, Spearman **0.02** (0.44 mean on compact subjects, 0.52 on wide scenes): the reported extent is a saliency spread, not a width.
+**Reading.** Composed temple footage puts the subject near the middle, so a plain centre crop is as good as the tracker and better than the two model-based locators; there is ~13 points of
+headroom between the tracker and a perfect centre, and neither model reaches it. The window WIDTH is a real trade-off with a number on it: going from 0.60 to 0.45 buys ~15% more picture height and
+costs ~13 points of the subject (0.88 -> 0.75 held with a centre crop). **Decision: no change to layout** (60% cap stays). **Limits:** 12 compact frames, one rater (me), the box is my reading of "what a
+viewer must see"; OWL-ViT used at 32-px patches with one prompt list, a larger detector (OWLv2 / Grounding DINO) or per-frame prompts from the story beat were not tried (RAM and time on CPU).
+**Next:** if framing matters more than this, the lever is width from a real signal (none found) or a bigger detector; otherwise leave the 60% window and improve what fills the frame.
+
+## EXP-024 — Multi-video regression suite (`tools/bench_suite.py`) and its first baseline
+
+Five different sources, fixed options (`--source-audio bed --no-transcript --no-captions`: no downloads, no speech model, repeatable), one run at a time (peak RSS ~2.5-3.0 GB of 5.7 GB; 156-805 s per
+video on this CPU). Per video: `evaluation.evaluate()` on the encoded reel plus story metrics (target-range check, distinct beats, roles, dead footage inside chosen clips). `compare` flags
+only regressions (left the duration range, more dead footage, fewer beats/clips, more alike clips, dark opening, new QC finding, QC fail). Baseline: `docs/research/suite_baseline.json`.
+| video | clips | s | in 25-38 s | beats | redundancy max | QC findings |
+|---|---|---|---|---|---|---|
+| golden (11 min) | 7 | 32.9 | yes | 5 | 0.61 | subject_in_frame |
+| darshan (Tirumala 2021) | 6 | 33.4 | yes | 4 | 0.72 | subject_in_frame |
+| drone (Tirumala 2025) | 6 | 38.0 | no (by 0.04 s) | **1** | 0.61 | subject_in_frame, weak_shots |
+| janakpur (aarti, ~1 min) | 4 | 35.5 | yes | **1** | **0.87** | ending_resolved |
+| kolkata (altar) | **2** | **19.0** | **no** (min 25.1) | 1 | 0.70 | duration, subject_in_frame |
+**What the baseline shows that the single-video runs did not:** (1) dead footage in chosen clips is 0 on all five (the EXP-019 rule holds beyond Tirumala); (2) footage with one kind of content
+(drone landscapes, one aarti, one altar) collapses to one beat and, for the two short sources, to 2-4 clips: a 19 s reel from a source that only has 2 usable shots is the planner running out of
+candidates, not a tuning problem; (3) janakpur's four clips are near-identical (0.87). These are the known-open items for the next changes to be measured against. Nothing here says the reels are
+GOOD: every number is objective and repeatable, none is a judgement of taste.
