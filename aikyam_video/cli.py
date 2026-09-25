@@ -19,7 +19,8 @@ def main(argv=None) -> int:
         s.add_argument("--translate", action="store_true", help="whisper translate to English")
         s.add_argument("--caption-lang"); s.add_argument("--caption-mode", choices=["sentence", "word"], default="sentence")
         s.add_argument("--no-captions", action="store_true", help="render with no caption overlay at all")
-        s.add_argument("--source-audio", choices=["keep", "off"], default="keep", help="off: drop the recorded sound (narration, chanting) entirely; cuts follow the picture and the music, and music is always added (creative engine)")
+        s.add_argument("--source-audio", choices=["keep", "off", "bed"], default="keep", help="off: drop the recorded sound entirely; cuts follow the picture and the music, and music is always added. bed: use the recording's own most music-like stretch as ONE continuous soundtrack (e.g. Tirumala's devotional music), never cut per clip (creative engine)")
+        s.add_argument("--no-transcript", action="store_true", help="skip speech-to-text entirely: no Whisper run, no transcript-derived entities or captions")
         s.add_argument("--experimental-selection", action="store_true", help="EXPERIMENTAL: also rank clips by look quality, the learned ranker and coverage of the whole recording (each has weak or synthetic evidence so far)")
         s.add_argument("--no-beats", action="store_true", help="do not use story beats (what each clip IS: establishing, ritual, procession, darshan...) when planning the story")
         s.add_argument("--no-color-match", action="store_true", help="do not colour-match the clips to each other (creative engine, ffmpeg renderer)")
@@ -91,15 +92,15 @@ def main(argv=None) -> int:
         uvicorn.run("aikyam_video.api:app", factory=True, host=a.host, port=a.port); return 0
     if a.vision_model: os.environ["VISION_MODEL"] = a.vision_model
     o = pipeline.Options(vision=a.vision, whisper_model=a.whisper_model, language=a.language, translate=a.translate,
-                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=not a.no_captions, source_audio=a.source_audio, color_match=not a.no_color_match, experimental_selection=a.experimental_selection, beats=not a.no_beats, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
+                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=not a.no_captions, source_audio=a.source_audio, transcript=not a.no_transcript, color_match=not a.no_color_match, experimental_selection=a.experimental_selection, beats=not a.no_beats, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
                          scoring_config=a.scoring_config, temple_id=a.temple_id, location=a.location, festival_id=a.festival_id,
                          music_track=a.music_track, music=a.music, music_volume=a.music_volume, renderer=a.renderer, transition=a.transition, transition_seconds=a.transition_seconds, planner=a.planner, audio_tagger=a.audio_tagger,
                          formats=[a.format] if a.format else ["reel", "square", "landscape"])
     o.music_web = a.music_web; o.hook_first = a.hook_first; o.title, o.subtitle = a.title, a.subtitle; o.edge_snap = not a.no_edge_snap; o.motion_dedupe = not a.no_motion_dedupe
     o.opening = a.opening; o.order = [x.strip() for x in a.order.split(",") if x.strip()] if a.order else None
-    o.allow_silent = a.allow_silent or bool(a.music_file) or a.source_audio == "off"          # quiet footage is fine when its sound is never used
-    if a.source_audio == "off" and a.engine == "classic":
-        print("error: --source-audio off needs the creative engine", file=sys.stderr); return 1
+    o.allow_silent = a.allow_silent or bool(a.music_file) or a.source_audio in ("off", "bed")          # quiet footage is fine when its per-clip sound is never used
+    if a.source_audio in ("off", "bed") and a.engine == "classic":
+        print(f"error: --source-audio {a.source_audio} needs the creative engine", file=sys.stderr); return 1
     if a.source_audio == "off" and a.music == "off" and not a.music_file and not a.music_track:
         print("error: --source-audio off with --music off would render a silent reel", file=sys.stderr); return 1
     if a.music_file:

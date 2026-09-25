@@ -57,6 +57,8 @@ def _audio_tagger(o: Options):
 
 
 def transcription(src: str, art: str, o: Options) -> Transcript:
+    if not o.transcript:                                                       # --no-transcript: nothing is transcribed, nothing downstream reads speech
+        tr = Transcript(language=o.language or "und", segments=[]); _dump(os.path.join(art, TRANSCRIPT), tr.model_dump()); return tr
     tp = _provider("transcription", o.transcription)
     if o.whisper_model: tp.model_name = o.whisper_model
     tp.language, tp.translate = o.language, o.translate
@@ -99,7 +101,7 @@ def highlights(src: str, art: str, o: Options):
     _dump(os.path.join(art, ENTITIES), {k: [r.model_dump() for r in v] for k, v in ents.items()})
     ctx = build_ctx(src, info, scenes, vis, tr, audio, ex, black=black, profile=o.profile, allow_silent=o.allow_silent)
     cfg = ScoringConfig.load(o.scoring_config)
-    if o.source_audio == "off":                                              # the recorded sound (narration, chanting) is not part of the reel: it must not decide which moments are picked
+    if o.silent_source:                                                      # the recorded sound (narration, chanting) is not part of the reel: it must not decide which moments are picked
         cfg.weights = {**cfg.weights, "audioImportance": 0.0, "semanticImportance": 0.0}
     if o.experimental_selection:                                             # opt-in terms; explicit weights from --scoring-config still win
         from . import ranker

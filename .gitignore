@@ -25,3 +25,4 @@ inputs/*.mov
 inputs/*.ml.json
 
 music/web/
+.pytest_tmp/

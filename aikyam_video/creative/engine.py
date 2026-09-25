@@ -15,7 +15,7 @@ from ..models import EntityRef, Moment, SceneVision, Transcript
 from ..options import Options
 from ..plan import assemble_plan, validate_plan
 from ..reframe import camera_path, smooth_path, track_subject_ex
-from . import grade, layout, mixer, music_sync, pacing, qc as QC, replan, story, transitions
+from . import bed, grade, layout, mixer, music_sync, pacing, qc as QC, replan, story, transitions
 from .model import Clip, Shot, Timeline
 from .stills import motion_for
 from .musicdna import analyze_track
@@ -96,12 +96,14 @@ def choose_music(plan_like: dict, audio, profile: pacing.PacingProfile, o: Optio
     """(Track|None, reason). Forced id > auto. Auto respects the live sound: strongly devotional live sound -> none; moderate -> drones only."""
     if o.music_track:
         t = M.get_track(o.music_track); return t, "explicitly requested"
+    if o.source_audio == "bed":
+        return None, "the source's own audio is the soundtrack (bed)"
     if o.music != "auto":
         return None, "music off"
     tracks, _ = M.load_library()
     if not tracks:
         return None, "no licensed music library"
-    silent = o.source_audio == "off"
+    silent = o.silent_source
     lvl = 0.0 if silent else M.original_devotional_level(plan_like, audio)
     if lvl >= o.music_skip_threshold:
         return None, f"original audio is already devotional music/chanting ({lvl:.2f} >= {o.music_skip_threshold})"
@@ -137,7 +139,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
     multi = ctx.sources is not None
     srcs = ctx.sources or [Source("a1", ctx.src, "video", ctx.info, ctx.moments, ctx.vision, ctx.audio, ctx.transcript)]
     by_id = {x.id: x for x in srcs}; shots = []
-    silent = o.source_audio == "off"          # the recorded sound is not part of the reel: no audio evidence in selection, cuts, transitions or the mix
+    silent = o.silent_source          # the recorded sound is not part of the reel: no audio evidence in selection, cuts, transitions or the mix
     for x in srcs:
         if x.kind == "image":
             shots.append(x.shot)
@@ -175,7 +177,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
         prelim = {"source": {"ritualId": _ids(ctx.entities, "RITUAL"), "deityId": _ids(ctx.entities, "DEITY"), "festivalId": _ids(ctx.entities, "FESTIVAL")},
                   "segments": [{"start": c.start, "end": c.end, "reason": _reason(c), "score": c.shot.score} for c in tl.clips]}
         track, why = choose_music(prelim, ctx_audio, prof, o)
-        if o.music_web and not o.music_track and o.music == "auto" and (o.source_audio == "off" or M.original_devotional_level(prelim, ctx_audio) < o.music_skip_threshold):       # the live sound is not already devotional music (or is not used at all)
+        if o.music_web and not o.music_track and o.music == "auto" and (o.silent_source or M.original_devotional_level(prelim, ctx_audio) < o.music_skip_threshold):       # the live sound is not already devotional music (or is not used at all)
             from .. import music_web
             lab = {}
             for c in tl.clips:
@@ -233,7 +235,9 @@ def build_plans(ctx: Ctx) -> List[dict]:
                              {x.id: x.transcript for x in videos if x.transcript} if multi else ctx.transcript, ctx.entities,
                              o.caption_lang, o.caption_mode, None, "9:16", "REEL", o.location, creative, assets or None, o.title, o.subtitle)
         plan["captions"]["cues"] = retime_cues(plan["captions"]["cues"], end=plan["durationSeconds"]); plan["captions"]["enabled"] = bool(plan["captions"]["cues"])
-        if silent: plan["audio"]["preserveOriginal"] = False; plan["audio"]["sourceAudio"] = "off"
+        if silent: plan["audio"]["preserveOriginal"] = False; plan["audio"]["sourceAudio"] = o.source_audio
+        if o.source_audio == "bed" and ctx_audio is not None and len(ctx_audio.rms_db):
+            bs, bsc, bwhy = bed.pick_window(ctx_audio, plan["durationSeconds"] + 1.0); plan["audio"]["bed"] = {"start": bs, "score": bsc, "why": bwhy}
         if not o.captions:
             plan["captions"]["cues"] = []; plan["captions"]["enabled"] = False
         d = next((x for x in tl.decisions if x["type"] == "director"), None)
@@ -253,8 +257,10 @@ def build_plans(ctx: Ctx) -> List[dict]:
 
 
 # ------------------------------------------------------------------ mix + render + QC + re-edit
-def mix_for(plan: dict, src: str, audio: Optional[AudioProfile], ceiling_db: float = mixer.CEILING_DB, voiceover: bool = False, live_on: bool = True):
+def mix_for(plan: dict, src: str, audio: Optional[AudioProfile], ceiling_db: float = mixer.CEILING_DB, voiceover: bool = False, live_on: bool = True, bed_path: Optional[str] = None):
     m = plan["audio"].get("music", {}); path = M.get_track(m["trackId"]).path if m.get("enabled") else None
+    if bed_path:                                                                   # the source's own audio as one continuous track (--source-audio bed)
+        path, m = bed_path, {"offset": 0.0}
     mix = mixer.render_audio(plan, src, path, float(m.get("offset", 0.0)), presence_fn(audio), float(m.get("volume", 0.5)), ceiling_db=ceiling_db, live_on=live_on)
     if voiceover and plan["captions"].get("cues"):
         from . import narration
@@ -269,7 +275,8 @@ def render_reel(plan: dict, src: str, out_dir: str, o: Options, audio: Optional[
     primary = formats[0]; ceiling = mixer.CEILING_DB; report = None; history = []
     for attempt in range(max(0, o.qc_attempts) + 1):
         for s in plan["segments"]: s.pop("liveGainDb", None)                       # level matching is recomputed for the (possibly re-edited) clip set
-        mix = mix_for(plan, src, audio, ceiling, voiceover=o.voiceover, live_on=o.source_audio != "off")
+        bp = bed.extract(src, plan["audio"]["bed"]["start"], plan["durationSeconds"] + 1.0, os.path.join(out_dir, "source_bed.wav")) if plan["audio"].get("sourceAudio") == "bed" and plan["audio"].get("bed") else None
+        mix = mix_for(plan, src, audio, ceiling, voiceover=o.voiceover, live_on=not o.silent_source, bed_path=bp)
         path = os.path.join(out_dir, FORMATS[primary]["file"])
         render_fn({**plan, "outputFormat": FORMATS[primary]["outputFormat"], "aspectRatio": FORMATS[primary]["aspect"]}, src, path, primary, out_dir, mix=mix)
         report = QC.run_qc(plan, path, out_dir, mix, primary) if o.qc else None

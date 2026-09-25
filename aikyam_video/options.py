@@ -24,7 +24,8 @@ class Options:
     caption_lang: Optional[str] = None
     caption_mode: str = "sentence"            # sentence | word
     captions: bool = True                     # False (--no-captions): render with no caption overlay at all
-    source_audio: str = "keep"                # keep | off (--source-audio off): the recorded sound is never heard, decided on or cut around; the reel is picture + music (creative engine)
+    source_audio: str = "keep"                # keep | off | bed (creative engine). off: the recorded sound is never heard, decided on or cut around (picture + music). bed: the recorded sound is used as ONE continuous soundtrack (its most music-like stretch), never cut per clip
+    transcript: bool = True                   # False (--no-transcript): skip speech-to-text entirely (no Whisper run, no transcript-derived entities or captions)
     beats: bool = True                        # story beats (beats.py) steer role fit and variety; --no-beats to disable
     experimental_selection: bool = False      # --experimental-selection: turn on the opt-in selection terms (aesthetic, learned ranker, coverage). UNPROVEN on real reels: see docs/research EXP-012/014/016
     color_match: bool = True                  # light colour match across the clips (creative/grade.py); --no-color-match to disable
@@ -67,3 +68,8 @@ class Options:
     long_video_threshold_s: float = 1800.0    # >= this: pipeline.run analyzes in overlapping chunks (chunking.py) instead of decoding the whole file at once
     chunk_seconds: float = 1200.0             # physical chunk length for long-video analysis
     chunk_overlap_seconds: float = 60.0       # shared between consecutive chunks, so nothing at a seam is missed
+
+    @property
+    def silent_source(self) -> bool:
+        """The recorded sound of each clip is not part of the reel (off: music only; bed: one continuous soundtrack)."""
+        return self.source_audio in ("off", "bed")

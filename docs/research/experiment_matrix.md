@@ -1108,3 +1108,27 @@ Errors: aarti in front of an idol reads as darshan; praying crowds read as music
 establishing shot, although 29 of 120 scenes are establishing views. Mis-typed: langar hall -> prayer, chandelier hall -> ritual_action.
 **Not verified:** whether reels actually improve. Beats are stored by the vision stage, so a real run needs a fresh analysis. **Next action:** run the 11-min video, compare beat
 sequences and judge by eye; extend `bench_beats_truth.json` beyond 35 frames.
+
+## EXP-019 — Tirumala reel with the video's own soundtrack: graphic guard, dead footage inside a scene
+
+Run (`--source-audio bed --no-transcript --no-captions`, recent 1080p CC video; the first candidate, a black-and-white 1970s film, was rejected by the user as unclear). `bed.py`
+picks the most music-like 38 s of the recorded audio (chant/bhajan/bell/conch/drums, minus speech, plus steadiness) and plays it as ONE continuous track: no cut-off voices.
+Two defects found by looking at the output, not by QC: (1) the REVEAL was the channel's giant "LIKE" thumbs-up graphic (no_text scores: title card -1.6, LIKE 2.2, real scenes
+>= 4.7, benchmark credits 0.8) -> `NO_TEXT_MIN` rule in `highlights.py` rejects moments whose scenes fall under the model's cut-off (`graphic_or_text_overlay`); (2) the CLOSING
+was one uncut handheld scene holding 1.5 s of blocked lens (sharpness 30-475 against 1700-3800, contrast 0.33, jitter 16). `best_window` never avoided it (an 8 s window in a 9.4 s
+scene cannot), and edge snapping then pulled the in-point back onto the cut at the smudge (found only after the first fix: `tirumala_darshan3` still had it). Fix: `dead_slots`
+(weak against the footage, or sharpness < 30% of the shot's own median), windows never contain dead slots and shrink to the longest clean run (>= 3 s), and the story rejects
+any snap that moves an edge onto dead footage. `tests/test_dead_slots.py` (the snap test fails without the guard). Result: closing = the clean lit tank, 4.4 s.
+**Limit:** the clean stretch is short (4.4 s) and static; a longer closing would need to extend into the neighbouring clean scene.
+
+## EXP-020 — Two QC checks that were measuring themselves (weak_shots, role_label_consistency)
+
+Tally over 17 stored reels: `subject_in_frame` 16, `weak_shots` 12, `role_label_consistency` 12. Before changing selection to "fix" them, each metric was checked.
+- **subject_in_frame**: real. The path is measured against the true render window (52-60% of the source width, the deliberate `WINDOW_MAX`); a subject wider than that is cut. It is a trade-off (whole frame = small picture over blur), not a bug. Left as is.
+- **weak_shots** (Laplacian variance of ONE mid-clip frame of the WHOLE output, 160 px): blurred fill above/below a fitted clip counts as softness, so it measured the layout. Now
+  the median of 3 frames on the picture rows only (`_picture_sharpness`, layout via `layout.decide`). On the 8 Golden/Tirumala reels with a source on disk every old warning
+  disappears; the worst real clip is at 0.32 of the reel median (line 0.25), the range 0.32-4. Synthetic test: a truly soft picture is still > 4x below a sharp one.
+- **role_label_consistency**: the "fireworks" anchor was built from the source's most fireworks-labelled scenes, in Tirumala one the model itself calls aarti 0.92 / fireworks 0.6:
+  an arati clip was compared with an arati scene. Anchors must now be unambiguous. Warnings on 13 reels: 12 -> 1; the remaining one is the Diwali reel that really has fireworks.
+**Not verified:** whether the reels themselves improve: this changes what QC reports, not what is selected. The selection weight of quality (`0.5 + 0.5*quality`) is untouched
+because the metric that said it was failing was wrong. **Next:** the clip quality gate needs a real signal: rate clips from several reels by eye, then test which measure predicts the rating.

@@ -299,3 +299,19 @@ def test_anthropic_llm_falls_back_to_a_plain_json_request_when_the_structured_sh
     class Beta2:
         def create(self, **kw): raise Other("network down")
     with pytest.raises(Other): AnthropicLLM(client=N(beta=N(messages=Beta2()), messages=Plain())).propose("s", "u", DIRECTOR_SCHEMA)         # only request-shape errors trigger the fallback
+
+
+def test_a_title_card_or_like_graphic_is_not_footage(monkeypatch):
+    """A reel once picked the channel's giant 'LIKE' thumbs-up animation as its REVEAL. Scenes whose no_text score is below the per-model cut-off are rejected."""
+    from aikyam_video import vision
+    from aikyam_video.highlights import validate_clip
+    like = SceneVision(sceneId="s0", start=0, end=30, vision=VisionResult(no_text=2.2, aesthetic=1.0))
+    real = SceneVision(sceneId="s1", start=30, end=60, vision=VisionResult(no_text=9.0, aesthetic=1.0))
+    monkeypatch.setenv("VISION_MODEL", vision.DEFAULT_MODEL)
+    assert validate_clip(_ctx([like, real]), 5, 15, []) == "graphic_or_text_overlay"
+    assert validate_clip(_ctx([like, real]), 35, 45, []) is None
+    assert validate_clip(_ctx([like, real]), 29.5, 40, []) is None                                  # only half a second of the graphic: not enough to reject
+    monkeypatch.setenv("VISION_MODEL", "hf-hub:timm/SOME-OTHER-MODEL")
+    assert validate_clip(_ctx([like, real]), 5, 15, []) is None                                     # uncalibrated model: no rule, never a wrong one
+    monkeypatch.setenv("VISION_MODEL", vision.DEFAULT_MODEL)
+    assert validate_clip(_ctx([SceneVision(sceneId="h", start=0, end=30, vision=VisionResult())]), 5, 15, []) is None      # no image-text model: nothing to judge

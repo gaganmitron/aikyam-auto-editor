@@ -14,6 +14,9 @@ from . import edges as _edges, mlx as _mlx
 from .model import Shot, SlotFeatures
 
 HOP = 0.5
+DEAD_Q = 0.10                   # slot quality below this = unusable footage (lens blocked, whip pan, focus lost)
+DEAD_DIP = 0.30                # ...or sharpness under this share of the shot's own median (the blocked lens inside one continuous handheld take)
+DEAD_MIN_SLOTS = 6             # a clean stretch must be at least 3 s to be worth keeping
 SAMPLE_FPS = 4                   # 2 frames per slot
 _FACE = None
 
@@ -220,6 +223,19 @@ class Population:
         return 0.5 * self.rank("motion", np.asarray(sl.motion)) + 0.5 * self.rank("rms_db", np.asarray(sl.rms_db))
 
 
+def dead_slots(shot: Shot, pop: Population) -> np.ndarray:
+    """Slots that are unusable footage (lens blocked, whip pan, focus lost): weak against the footage, or a sharpness dip inside this very shot."""
+    sl = shot.slots; n = len(sl.sharpness)
+    if not n or DEAD_Q <= 0: return np.zeros(n, bool)
+    sh = np.asarray(sl.sharpness, float)
+    return (pop.slot_quality(sl) < DEAD_Q) | ((sh < DEAD_DIP * np.median(sh)) if n >= 6 else False)
+
+
+def has_dead(shot: Shot, pop: Population, a: float, b: float) -> bool:
+    d = dead_slots(shot, pop)
+    return any(d[i] for i in range(len(d)) if shot.start + i * HOP < b and shot.start + (i + 1) * HOP > a)
+
+
 def best_window(shot: Shot, pop: Population, length: float, snap=None, lit: bool = False) -> Tuple[float, float, float]:
     """Best contiguous [a, a+length) inside the shot maximising mean slot quality; (start, end, mean quality).
     The first and last slot count double: they are where the eye lands, so they must be sharp and steady.
@@ -230,13 +246,28 @@ def best_window(shot: Shot, pop: Population, length: float, snap=None, lit: bool
     if lit and len(sl.luma) == n:
         q = q * np.clip((np.asarray(sl.luma, float) - 0.14) / 0.16, 0.10, 1.0)
     k = max(1, int(round(min(length, shot.length) / HOP)))
-    if n <= k:
+    ok = np.ones(n, bool)
+    dead = dead_slots(shot, pop)
+    if dead.any():
+        runs, i = [], 0
+        while i < n:
+            if dead[i]: i += 1; continue
+            j = i
+            while j < n and not dead[j]: j += 1
+            runs.append((i, j)); i = j
+        longest = max((j - i for i, j in runs), default=0)
+        if longest >= DEAD_MIN_SLOTS:                                       # dead slots never inside a clip, unless no clean stretch is long enough
+            ok = ~dead; k = min(k, longest)
+    if n <= k and ok.all():
         a, b = shot.start, shot.end
         return a, b, float(q.mean())
-    best, bi = -1.0, 0
+    best, bi = -1.0, None
     for i in range(0, n - k + 1):
+        if not ok[i:i + k].all(): continue
         w = q[i:i + k]; s = (w.sum() + w[0] + w[-1]) / (k + 2)
         if s > best + 1e-9: best, bi = s, i
+    if bi is None:
+        bi, best = 0, float(q[:k].mean())
     a = shot.start + bi * HOP; b = min(shot.end, a + k * HOP)
     if snap and b < shot.end - 1e-6:
         b = min(max(snap(b), a + max(HOP * 2, 0.5 * (b - a))), shot.end)

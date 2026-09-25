@@ -185,6 +185,7 @@ def _label_anchor(vis: list, emb: dict, wants: float, k: int = 3, floor: float =
 # those specific labels are the ones that misfire on fireworks/spark footage, so they make bad
 # ANCHOR material even though a clip claiming them is still a valid thing to cross-check (below).
 _DEVOTION_ANCHOR_LABELS = ("deity", "idol", "priest", "devotees", "lamps", "flowers")
+_DEVOTION_RIVALS = _DEVOTION_ANCHOR_LABELS + ("aarti", "abhishekam", "ritual_hands", "offerings", "incense_smoke")      # any of these outranking "fireworks" in a scene makes it a bad fireworks example
 _DEVOTIONAL_REASONS = {"deity", "idol", "priest", "devotees", "lamps", "flowers", "aarti", "abhishekam", "procession"}
 
 
@@ -252,8 +253,9 @@ def check_role_label_consistency(plan: dict, workdir: str, margin: float = 0.02)
             continue
         emb, vis = got
         own = _mean_embedding(emb, vis, s["start"], s["end"])
-        dev_anchor = _label_anchor(vis, emb, lambda labs: max(labs.get(k, 0.0) for k in _DEVOTION_ANCHOR_LABELS))
-        fw_anchor = _label_anchor(vis, emb, lambda labs: labs.get("fireworks", 0.0))
+        dev_of = lambda labs: max(labs.get(k, 0.0) for k in _DEVOTION_ANCHOR_LABELS)
+        dev_anchor = _label_anchor(vis, emb, lambda labs: dev_of(labs) if dev_of(labs) > labs.get("fireworks", 0.0) else 0.0)       # an anchor scene must be UNAMBIGUOUS: one the label model itself calls aarti (0.92) over fireworks (0.6)
+        fw_anchor = _label_anchor(vis, emb, lambda labs: labs.get("fireworks", 0.0) if labs.get("fireworks", 0.0) > max(labs.get(k, 0.0) for k in _DEVOTION_RIVALS) else 0.0)     # is no example of fireworks (Tirumala: the check compared an arati clip with an arati scene)
         if own is None or dev_anchor is None or fw_anchor is None:
             continue
         sim_dev, sim_fw = float(own @ dev_anchor), float(own @ fw_anchor)
@@ -306,18 +308,46 @@ def check_crop(plan: dict, video: str, tl: List[dict]) -> List[Check]:
     return [_ok("bad_crop")]
 
 
+def _picture_sharpness(video: str, c: dict, seg: dict, info, src_paths: dict, src_info: dict) -> float:
+    """Median Laplacian variance over 3 frames of the clip, measured on the REAL picture only: a fitted clip is a band in the middle of the frame with blurred
+    fill above and below (blur is by design, not softness), so the fill rows are left out. Whole frame when the clip fills it or the layout cannot be worked out."""
+    from . import layout as _layout
+    y0, y1 = 0.0, 1.0
+    try:
+        path = src_paths.get(seg.get("assetId")) if seg.get("kind", "video") == "video" else None
+        if path:
+            if path not in src_info: src_info[path] = ff.probe(path)
+            si = src_info[path]; lay = _layout.decide(seg, si.width, si.height, info.width / info.height)
+            if lay["mode"] == "fit_blur":
+                frac = min(1.0, (info.width * si.height / (lay["window"] * si.width)) / info.height); y0, y1 = (1 - frac) / 2, (1 + frac) / 2
+    except Exception:
+        y0, y1 = 0.0, 1.0
+    h = int(round(320 * info.height / info.width / 2)) * 2; vals = []
+    for f in (0.25, 0.5, 0.75):
+        t = c["start"] + f * (c["end"] - c["start"])
+        p = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", video, "-frames:v", "1", "-vf", f"scale=320:{h},format=gray", "-f", "rawvideo", "-"], capture_output=True)
+        if len(p.stdout) < 320 * h: continue
+        g = np.frombuffer(p.stdout, np.uint8)[:320 * h].reshape(h, 320); r0, r1 = int(round(y0 * h)) + 2, int(round(y1 * h)) - 2       # 2 rows off each edge: the seam is not the picture
+        vals.append(cv2.Laplacian(g[r0:r1] if r1 - r0 >= 16 else g, cv2.CV_64F).var())
+    return float(np.median(vals)) if vals else 0.0
+
+
 def check_duplicates_and_weak(plan: dict, video: str, tl: List[dict]) -> List[Check]:
     """Duplicate = the same picture twice: a fine (16x16) average-hash within 5% of the bits AND agreeing colour histograms. Both must hold, so two similar-looking
     but different shots (another aarti, another crowd) are not flagged."""
     out: List[Check] = []; hashes, hists, sharp = [], [], []
     info = ff.probe(video); h = int(round(160 * info.height / info.width / 2)) * 2
-    for c in tl:
+    src_paths = {a["id"]: a["path"] for a in plan.get("assets", [])} or ({None: plan["source"]["path"]} if plan.get("source") else {}); src_info: dict = {}
+    segs = plan.get("segments", [])
+    for n, c in enumerate(tl):
+        seg = segs[n] if n < len(segs) else {}
         t = (c["start"] + c["end"]) / 2
         p = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", video, "-frames:v", "1", "-vf", "scale=160:-2,format=bgr24", "-f", "rawvideo", "-"], capture_output=True)
         f = np.frombuffer(p.stdout, np.uint8)[:160 * h * 3].reshape(h, 160, 3) if p.stdout else np.zeros((h, 160, 3), np.uint8)
         g = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY); s16 = cv2.resize(g, (16, 16), interpolation=cv2.INTER_AREA)
-        hashes.append((s16 > s16.mean()).flatten()); sharp.append(cv2.Laplacian(g, cv2.CV_64F).var())
+        hashes.append((s16 > s16.mean()).flatten())
         hv = cv2.calcHist([cv2.cvtColor(f, cv2.COLOR_BGR2HSV)], [0, 1], None, [12, 4], [0, 180, 0, 256]); hists.append(cv2.normalize(hv, hv).flatten())
+        sharp.append(_picture_sharpness(video, c, seg, info, src_paths, src_info))
     dup = [(i, j) for i in range(len(hashes)) for j in range(i + 1, len(hashes))
            if (hashes[i] != hashes[j]).sum() <= 0.05 * 256 and cv2.compareHist(hists[i], hists[j], cv2.HISTCMP_CORREL) >= 0.97]
     if dup and plan.get("creative", {}).get("motionDedupe", True):                          # the same venue looks identical at any moment: two clips only repeat if they also MOVE alike (hypecut)

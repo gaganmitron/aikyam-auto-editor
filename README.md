@@ -38,7 +38,7 @@ aikyam-video analyze|highlights|plan|render|process INPUT... [-o DIR] [--format 
    [--engine creative|classic] [--pacing contemplative|devotional|festive] [--opening hook|establish] [--hook-first]
    [--order v3,v1,i2] [--title "..."] [--subtitle "..."] [--reels N] [--variants N] [--allow-silent]
    [--no-qc] [--qc-attempts 2] [--no-edge-snap] [--no-motion-dedupe] [--scoring-config weights.json]
-   [--source-audio keep|off] [--no-captions] [--voiceover] [--no-color-match] [--no-beats] [--experimental-selection] [--vision-model hf-hub:timm/ViT-B-16-SigLIP-256]
+   [--source-audio keep|off|bed] [--no-transcript] [--no-captions] [--voiceover] [--no-color-match] [--no-beats] [--experimental-selection] [--vision-model hf-hub:timm/ViT-B-16-SigLIP-256]
 aikyam-video live SOURCE [--chunk 60 --overlap 10 --min-score 0.4 --no-render]   # rolling highlights from a stream/file
 aikyam-video serve                       # Media API            aikyam-video worker --role orchestrator|intelligence|highlight|planner|render
 python -m aikyam_video.ui                # small web UI (upload, arrange, render) -- separate module, not a CLI subcommand
@@ -48,6 +48,7 @@ python -m aikyam_video.ui                # small web UI (upload, arrange, render
 `--source-audio off` drops the recorded sound entirely (no narration cut at transitions): cuts follow the picture and the music, and music is always added
 (creative engine; pair with `--music-web` or `--music-file` for real tracks -- the built-in ones are synthesised placeholders). `--no-captions` removes the caption
 overlay; `--voiceover` reads the captions aloud with offline TTS (robotic; off by default); clips are colour-matched to each other unless `--no-color-match`.
+`--source-audio bed` uses the video's own most music-like stretch (chant/bhajan/bell, chosen by `creative/bed.py`) as ONE continuous soundtrack under the whole reel: no cut-off voices, no separate music; famous recordings are copyrighted, so a specific track needs `--music-file`. `--no-transcript` skips speech recognition (with `off`/`bed` the words are not used anyway). Clips that are mostly a graphic or text overlay (a "LIKE" card, title) are rejected, and a clip never contains dead footage (blocked lens, whip) from inside a scene.
 Story beats (`beats.py`: establishing, approach, ritual action, procession, prayer, darshan...) say what each clip IS and steer role choice and variety; `--no-beats` turns them off.
 Opening titles show only upload metadata (temple/festival ids), never an inferred ritual or deity name. `--experimental-selection` adds look-quality, the
 learned ranker (needs a fitted artifact, none ships) and coverage terms to clip choice -- see docs/research EXP-012/014/016 for how weak the evidence still is.

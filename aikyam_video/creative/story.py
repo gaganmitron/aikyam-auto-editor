@@ -15,7 +15,7 @@ from .model import Clip, ROLES, Shot, Timeline
 from .pacing import PacingProfile, shot_length, target_duration
 from .roles import CFG, affinities, aggregates
 from .edges import motion_differs, snap_window
-from .shots import HOP, Population, best_window, carve
+from .shots import HOP, Population, best_window, carve, has_dead
 
 S = CFG["story"]
 MIN_REEL_S = 15.0       # a Reel is at least this long whenever the footage can supply it
@@ -209,7 +209,11 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
         a, b, q = best_window(s, pop, float(length), snap, lit=(role == "OPENING"))
         a0, b0, locked = a, b, False
         if edger is not None and s.kind == "video":                                            # real cuts / pauses beat the fixed slot grid
-            a, b, einfo = edger(s, a, b, max(1.5, 0.75 * (b - a)), min(profile.max_shot, 1.25 * (b - a)), first=ci == 0, last=ci == len(best) - 1)
+            a1, b1, einfo = edger(s, a, b, max(1.5, 0.75 * (b - a)), min(profile.max_shot, 1.25 * (b - a)), first=ci == 0, last=ci == len(best) - 1)
+            if has_dead(s, pop, a1, b1) and not has_dead(s, pop, a, b):        # a snap must not pull an edge back onto dead footage (the blocked-lens cut)
+                einfo = {}
+            else:
+                a, b = a1, b1
             if einfo:
                 dec.append({"type": "edge", "shot": s.id, "moved": {k: {"seconds": v[0], "to": v[1]} for k, v in einfo.items()}}); locked = "end" in einfo and einfo["end"][1] in ("cut", "phrase")
         clips.append(Clip(s, a, b, role, locked_end=locked, why=f"{role.lower()}: affinity {aff[s.id][role]:.2f}, quality {q:.2f}, labels {sorted(k for k, v in s.labels.items() if v >= 0.5)[:3]}"))

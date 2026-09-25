@@ -47,6 +47,10 @@ def detect_black(path: str, min_len: float = 0.5) -> List[Tuple[float, float]]:
             re.findall(r"black_start:([\d.]+) black_end:([\d.]+)", p.stderr.decode(errors="replace"))]
 
 
+# Frames that are a title card, credits, a subtitle or a channel's own "LIKE / subscribe" animation are not footage (EXP-019: a reel picked a giant thumbs-up graphic as its REVEAL).
+# `no_text` is a raw model logit difference, so the cut-off is calibrated PER MODEL: default B-16 SigLIP -- title card -1.6, LIKE graphic 2.2, credits 0.8, subtitled footage -4.9 / 2.4,
+# against >= 4.7 for every genuine footage scene in 42 + 35 frames. A model without a calibrated cut-off gets no rule (never a wrong one).
+NO_TEXT_MIN = {"hf-hub:timm/ViT-B-16-SigLIP": 3.0}
 SPECIAL = {"ritual_dance": 0.9, "fireworks": 0.5}   # labels DEVOTIONAL doesn't weight but that name a moment well
 
 
@@ -120,6 +124,10 @@ def validate_clip(ctx: Ctx, a: float, b: float, accepted: List[Tuple[float, floa
         return "black_frames"
     if len([s for s in ctx.scenes if s.end - 0.25 > a and s.start + 0.25 < b]) > 2:
         return "crosses_too_many_scenes"
+    from .vision import model_name
+    cut = NO_TEXT_MIN.get(model_name())
+    if cut is not None and any(sv.vision.no_text is not None and sv.vision.no_text < cut and min(sv.end, b) - max(sv.start, a) >= 1.0 for sv in ctx.vision):
+        return "graphic_or_text_overlay"
     if any(a + 0.25 < t < b - 0.25 for t in ctx.event_bounds):        # EXP-004b: a candidate that straddles a detected event boundary spans two different occasions
         return "crosses_event_boundary"
     if any(sv.end > a and sv.start < b and max(sv.vision.moderation.values(), default=0) >= MODERATION_BLOCK

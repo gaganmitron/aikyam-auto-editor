@@ -54,8 +54,8 @@ def test_best_window_avoids_the_blurry_lead_in(tmp_path):
     sh = Shot("s", 0.0, 10.0, "m", 0.5, {}, [], None, analyze_window(p, 0.0, 10.0, None))
     a, b, q = best_window(sh, Population([sh]), 5.0)
     assert a >= 2.5 and b - a == pytest.approx(5.0, abs=0.51) and b <= 10.0     # starts in (or right at the start of) the sharp part
-    a2, b2, _ = best_window(sh, Population([sh]), 20.0)                          # asking for more than exists returns the whole shot
-    assert (a2, b2) == (0.0, 10.0)
+    a2, b2, _ = best_window(sh, Population([sh]), 20.0)                          # asking for more than exists returns the whole USABLE shot: the 3 s blurry lead-in is dead footage and is dropped
+    assert (a2, b2) == (3.0, 10.0)
 
 
 def test_best_window_out_point_can_snap_to_quiet_but_never_leaves_the_shot(clip):
