@@ -43,16 +43,41 @@ def owl_center(img):
     return float((cx * wt).sum() / wt.sum())
 
 
+def sam3_center(img):
+    """The largest-area SAM 3 mask across the same QUERIES, weighted by confidence x (1 - width fraction) like owl_center, but from a MASK: also returns the
+    mask's own horizontal extent (min..max column with any foreground pixel), which owl_center's box width cannot give honestly (a box is a bound, not the shape)."""
+    import torch
+    from transformers import Sam3Processor, Sam3Model
+    global _sam3
+    if "_sam3" not in globals() or _sam3 is None:
+        _sam3 = (Sam3Processor.from_pretrained("facebook/sam3"), Sam3Model.from_pretrained("facebook/sam3").eval())
+    proc, m = _sam3; h, w = img.shape[:2]; rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    best = None
+    for q in QUERIES:                                                                     # SAM3 (Sam3Processor) takes one text concept per call, unlike OWL-ViT's joint list
+        inp = proc(images=rgb, text=q, return_tensors="pt")
+        with torch.no_grad(): out = m(**inp)
+        r = proc.post_process_instance_segmentation(out, threshold=0.3, mask_threshold=0.5, target_sizes=[(h, w)])[0]
+        for score, mask in zip(r.get("scores", []), r.get("masks", [])):
+            mk = mask.numpy() > 0.5; cols = np.where(mk.any(axis=0))[0]
+            if not len(cols): continue
+            width = (cols.max() - cols.min() + 1) / w; wt = float(score) * np.clip(1 - width, 0.05, 1)
+            cx = (cols.min() + cols.max()) / 2 / w
+            if best is None or wt > best[0]: best = (wt, cx, width)
+    return (0.5, 0.0) if best is None else (best[1], best[2])
+
+
 def main():
     from aikyam_video.reframe import track_subject_ex
-    use_owl = "--owl" in sys.argv; res = {"centre": [], "tracker": [], "siglip crops": []}
+    use_owl = "--owl" in sys.argv; use_sam3 = "--sam3" in sys.argv; res = {"centre": [], "tracker": [], "siglip crops": []}
     if use_owl: res["owlvit"] = []
+    if use_sam3: res["sam3"] = []
     for it in T:
         if it["subject"] is None: continue
         img = cv2.imread(f"{D}/f{it['n']:02d}.png"); sub = it["subject"]; centres = {"centre": 0.5}
         tr = track_subject_ex(it["path"], it["t"] - 1.0, it["t"] + 1.0); centres["tracker"] = float(np.median([x for _, x, _ in tr])) if tr else 0.5
         centres["siglip crops"] = siglip_center(img)
         if use_owl: centres["owlvit"] = owl_center(img)
+        if use_sam3: centres["sam3"], _sam3_width = sam3_center(img)
         for k, c in centres.items(): res[k].append((it["n"], c, [cov(c, W, sub) for W in WS], abs(c - (sub[0] + sub[1]) / 2)))
         print(it["n"], sub, {k: round(v, 2) for k, v in centres.items()}, flush=True)
     print(f"\n{len(res['centre'])} compact-subject frames.   method            coverage@W=" + " / ".join(map(str, WS)) + "    mean centre error")

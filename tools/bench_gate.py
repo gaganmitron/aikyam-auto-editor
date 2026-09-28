@@ -7,8 +7,8 @@ import json, os, random, subprocess, sys
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = "results/bench_gate"; L = 4.0; PER = 14; SEED = 21
-SOURCES = {"golden": "inputs/golden_temple_full.webm", "darshan": "inputs/tirumala_darshan_2021.mp4", "drone": "inputs/tirumala_drone_2025.mp4",
-           "janakpur": "inputs/bench_ganga_aarti_janakpur.webm", "kolkata": "inputs/bench_temple_aarti_kolkata.webm"}
+SOURCES = {"darshan": "inputs/tirumala_darshan_2021.mp4", "drone": "inputs/tirumala_drone_2025.mp4",
+           "tourist": "inputs/tirumala_tourist_2024_trimmed.mp4", "padmavathi": "inputs/tirupati_padmavathi_abhishekam_2020.mp4"}      # updated 2026-09-27 (EXP-034): the current 4-video Tirumala/Tirupati set, golden/janakpur/kolkata were deleted
 FEATS = ["sharpness", "jitter", "motion", "luma", "contrast", "clipped", "concentration"]
 
 
@@ -41,6 +41,42 @@ def sample():
             strip = np.hstack([cv2.resize(f, (356, 200)) for f in fr]); cv2.putText(strip, w["id"].split("_")[1] + f" #{wins.index(w)}", (6, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2); rows.append(strip)
         cv2.imwrite(f"{OUT}/sheet_{s // 5:02d}.jpg", np.vstack(rows), [cv2.IMWRITE_JPEG_QUALITY, 80])
     print("wrote", len(wins), "windows,", (len(wins) + 4) // 5, "sheets")
+
+
+def add(only=None, per=18, seed=34):
+    """EXP-034: append NEW random windows for `only` (a list of SOURCES keys, default: all) WITHOUT touching existing windows.json entries -- previously
+    rated windows keep their id and rating. Writes new_sheet_*.jpg for ONLY the new windows (existing sheets are untouched)."""
+    from aikyam_video.creative.shots import analyze_window
+    from aikyam_video.creative import edges
+    os.makedirs(OUT, exist_ok=True)
+    existing = json.load(open(f"{OUT}/windows.json")) if os.path.exists(f"{OUT}/windows.json") else []
+    have_ids = {w["id"] for w in existing}
+    rng = random.Random(seed); new = []
+    for name, path in {k: SOURCES[k] for k in (only or SOURCES)}.items():
+        dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], capture_output=True, text=True).stdout)
+        bin_w = (dur - 10 - L) / per
+        for i in range(per):
+            for _try in range(40):
+                a = round(5 + i * bin_w + rng.random() * (bin_w - 0.1), 1)
+                if not edges.detect_cuts(path, a, a + L): break
+            wid = f"{name}_{a:07.1f}"
+            if wid in have_ids: continue
+            sl = analyze_window(path, a, a + L, None)
+            w = {"id": wid, "video": name, "path": path, "start": a, "end": a + L, **{k2: [float(x) for x in getattr(sl, k2)] for k2 in FEATS}}
+            new.append(w); have_ids.add(wid); print(len(existing) + len(new), w["id"], flush=True)
+    rng.shuffle(new); all_wins = existing + new
+    json.dump(all_wins, open(f"{OUT}/windows.json", "w"))
+    for s in range(0, len(new), 5):
+        rows = []
+        for w in new[s:s + 5]:
+            fr = [frame_at(w["path"], w["start"] + f * L) for f in (0.02, 0.35, 0.68, 0.98)]
+            fr = [cv2.resize(f, (int(f.shape[1] * 200 / f.shape[0]), 200)) for f in fr]
+            strip = np.hstack([cv2.resize(f, (356, 200)) for f in fr])
+            cv2.putText(strip, w["id"], (6, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
+            cv2.putText(strip, f"#{all_wins.index(w)}", (6, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            rows.append(strip)
+        cv2.imwrite(f"{OUT}/new_sheet_{s // 5:02d}.jpg", np.vstack(rows), [cv2.IMWRITE_JPEG_QUALITY, 80])
+    print(f"added {len(new)} new windows, {(len(new) + 4) // 5} new sheets (new_sheet_*.jpg); total windows now {len(all_wins)}")
 
 
 def signals(wins):
@@ -83,5 +119,12 @@ def fit():
         print(f"{n:32s} {pooled:+.2f}       {np.mean(within):+.2f}                      {auc(X[:, j], bad):.2f} / {np.nanmean(aw):.2f}")
 
 
+import argparse
+
+
 if __name__ == "__main__":
-    {"sample": sample, "fit": fit}[sys.argv[1]]()
+    if sys.argv[1] == "add":
+        ap = argparse.ArgumentParser(); ap.add_argument("cmd"); ap.add_argument("--only", nargs="*"); ap.add_argument("--per", type=int, default=18); ap.add_argument("--seed", type=int, default=34); a = ap.parse_args()
+        add(a.only, a.per, a.seed)
+    else:
+        {"sample": sample, "fit": fit}[sys.argv[1]]()
