@@ -147,5 +147,5 @@ def render_format(plan: dict, src: str, out_path: str, fmt: str, workdir: str, f
     inputs += ["-i", wav]; ids = plan["source"]
     meta = json.dumps({k: ids.get(k) for k in ("videoId", "templeId", "deityId", "ritualId", "festivalId")} | {"template": plan["overlays"].get("template"), "generator": "aikyam-video/diffusion"})
     ff.run([*inputs, "-filter_complex", ";".join(graph), "-map", "[vout]", "-map", f"{n_in}:a", "-t", f"{dur}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-movflags", "+faststart", "-metadata", f"comment={meta}", "-metadata", f"title={plan['overlays'].get('temple') or 'Aikyam'}", out_path])
+            "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", "-metadata", f"comment={meta}", "-metadata", f"title={plan['overlays'].get('temple') or 'Aikyam'}", out_path])
     return out_path

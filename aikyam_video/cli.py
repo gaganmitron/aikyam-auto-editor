@@ -22,6 +22,8 @@ def main(argv=None) -> int:
         s.add_argument("--source-audio", choices=["keep", "off", "bed"], default="keep", help="off: drop the recorded sound entirely; cuts follow the picture and the music, and music is always added. bed: use the recording's own most music-like stretch as ONE continuous soundtrack (e.g. Tirumala's devotional music), never cut per clip (creative engine)")
         s.add_argument("--no-transcript", action="store_true", help="skip speech-to-text entirely: no Whisper run, no transcript-derived entities or captions")
         s.add_argument("--experimental-selection", action="store_true", help="EXPERIMENTAL: also rank clips by look quality, the learned ranker and coverage of the whole recording (each has weak or synthetic evidence so far)")
+        s.add_argument("--sequence-terms", action="store_true", help="EXPERIMENTAL (EXP-026): penalise awkward cuts when ordering clips (same size twice, big energy or brightness jumps, unrelated cross-video action); off by default")
+        s.add_argument("--spread-sources", action="store_true", help="EXPERIMENTAL (E4b): avoid two clips in a row from the same video when a reel uses several videos; off by default")
         s.add_argument("--no-beats", action="store_true", help="do not use story beats (what each clip IS: establishing, ritual, procession, darshan...) when planning the story")
         s.add_argument("--no-color-match", action="store_true", help="do not colour-match the clips to each other (creative engine, ffmpeg renderer)")
         s.add_argument("--voiceover", action="store_true", help="read the captions aloud (offline espeak-ng TTS), ducked into the mix; creative engine only")
@@ -92,7 +94,7 @@ def main(argv=None) -> int:
         uvicorn.run("aikyam_video.api:app", factory=True, host=a.host, port=a.port); return 0
     if a.vision_model: os.environ["VISION_MODEL"] = a.vision_model
     o = pipeline.Options(vision=a.vision, whisper_model=a.whisper_model, language=a.language, translate=a.translate,
-                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=not a.no_captions, source_audio=a.source_audio, transcript=not a.no_transcript, color_match=not a.no_color_match, experimental_selection=a.experimental_selection, beats=not a.no_beats, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
+                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=not a.no_captions, source_audio=a.source_audio, transcript=not a.no_transcript, color_match=not a.no_color_match, experimental_selection=a.experimental_selection, sequence_terms=a.sequence_terms, spread_sources=a.spread_sources, beats=not a.no_beats, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
                          scoring_config=a.scoring_config, temple_id=a.temple_id, location=a.location, festival_id=a.festival_id,
                          music_track=a.music_track, music=a.music, music_volume=a.music_volume, renderer=a.renderer, transition=a.transition, transition_seconds=a.transition_seconds, planner=a.planner, audio_tagger=a.audio_tagger,
                          formats=[a.format] if a.format else ["reel", "square", "landscape"])

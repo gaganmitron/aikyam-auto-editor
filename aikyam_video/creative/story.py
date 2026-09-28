@@ -15,6 +15,7 @@ from .model import Clip, ROLES, Shot, Timeline
 from .pacing import PacingProfile, shot_length, target_duration
 from .roles import CFG, affinities, aggregates
 from .edges import motion_differs, snap_window
+from . import sequencing
 from .shots import HOP, Population, best_window, carve, has_dead
 
 S = CFG["story"]
@@ -68,7 +69,7 @@ def pool_similarity(pool: Sequence[Shot], q: float) -> float:
 
 
 def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, source_duration: float, target_s: Optional[float] = None,
-               exclude: Sequence[tuple] = (), avoid: Sequence[Shot] = (), snap=None, max_clips: Optional[int] = None, director=None, notes: Optional[Dict[str, str]] = None, forced_order: Optional[Sequence[str]] = None, edger=None, motion_dedupe: bool = True, hook_first: bool = False, coverage: Optional[float] = None) -> Timeline:
+               exclude: Sequence[tuple] = (), avoid: Sequence[Shot] = (), snap=None, max_clips: Optional[int] = None, director=None, notes: Optional[Dict[str, str]] = None, forced_order: Optional[Sequence[str]] = None, edger=None, motion_dedupe: bool = True, hook_first: bool = False, coverage: Optional[float] = None, transition: Optional[Dict[str, float]] = None) -> Timeline:
     pool = sorted([s for s in shots if s.slots and not any(_overlap(_win(s), e) > 0.5 or (s.kind == "image" and e[0] == s.asset_id) for e in exclude)], key=lambda s: s.id)
     dec: List[dict] = []
     if not pool:
@@ -116,6 +117,9 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
         else:
             R = np.array([[red(a, b) for b in pool] for a in pool])
         Wt = np.array([max(s.length, 1e-3) * max(s.score, 1e-3) for s in pool]); Wt = Wt / Wt.sum()      # long, well-scored footage counts more
+    tw = transition if transition is not None else S.get("transition", {})                 # EXP-026: transition costs between neighbours (sequencing.py); all 0 = today's planner
+    tw_on = any(tw.get(k, 0.0) for k in sequencing.TERMS); en = {k: v["energy"] for k, v in agg.items()} if tw_on else {}
+    multi_pool = len({x.asset_id for x in pool if x.kind == "video"}) > 1                   # a term about "the same video twice" only means something when there is more than one video
     for ri, role in enumerate(ROLES):
         if hook_shot is not None and role == "OPENING":
             continue
@@ -144,6 +148,8 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
                         inc += S["chronology_bonus_multi_asset"] / max(n_t, 1)
                 if chosen and s.beats and chosen[-1][1].beats:                                  # same beat back to back = repetition even when the pictures differ
                     inc -= S.get("beat_repeat_penalty", 0.0) * sum(s.beats.get(b, 0.0) * chosen[-1][1].beats.get(b, 0.0) for b in s.beats)
+                if chosen and tw_on:                                                            # how this shot reads after the previous one (shot size, energy, brightness, unrelated cross-video motion)
+                    inc -= sequencing.cost(chosen[-1][1], s, role, en, similarity, tw, multi_pool)
                 if cov_w and s.id in ids:                                                    # after the quality gate, like chronology: ranks candidates that already clear the bar, never rescues one that doesn't
                     inc += cov_w * float((Wt * np.maximum(R[:, ids[s.id]] - cur, 0.0)).sum())
                 nxt.append((score + inc, chosen + [(role, s)]))
@@ -264,17 +270,20 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
             clips.append(Clip(cand, a2, b2, role, why=f"fill: the reel was {before:.1f}s, under {floor:.0f}s")); used.add(cand.id)
             clips.sort(key=lambda c: ROLES.index(c.role)); dec.append({"type": "fill", "shot": cand.id, "role": role, "seconds": round(b2 - a2, 1), "why": f"reel would be {before:.1f}s, under {floor:.0f}s"})
     resolve_overlaps(); clips = [c for c in clips if c.length >= 1.0]                                          # the top-up can add a clip that touches an edge-snapped neighbour of the same take
+    if tw_on and len(clips) > 1:                                                        # the trace describes the reel that is actually built (after the top-up), pair by pair
+        dec.append({"type": "transition_cost", "weights": {k: tw[k] for k in sequencing.TERMS if tw.get(k)},
+                    "pairs": [{"from": x.shot.id, "to": y.shot.id, **{k: round(v, 3) for k, v in sequencing.terms(x.shot, y.shot, y.role, en, similarity, multi_pool).items()}} for x, y in zip(clips, clips[1:])]})
     asc = len({c.shot.asset_id for c in clips}) == 1 and all(clips[k].start < clips[k + 1].start for k in range(len(clips) - 1))
     return Timeline(clips, profile.name, [c.role for c in clips], "source" if asc else "narrative", dec, float(best_score), {"sim_floor": s0, "T": T})
 
 
 def plan_stories(shots: Sequence[Shot], pop: Population, profile: PacingProfile, source_duration: float, k: int = 1, target_s: Optional[float] = None,
-                 snap=None, min_clips: int = 2, director=None, notes=None, order=None, edger=None, motion_dedupe: bool = True, hook_first: bool = False, coverage: Optional[float] = None) -> List[Timeline]:
+                 snap=None, min_clips: int = 2, director=None, notes=None, order=None, edger=None, motion_dedupe: bool = True, hook_first: bool = False, coverage: Optional[float] = None, transition: Optional[Dict[str, float]] = None) -> List[Timeline]:
     """Up to k different reels from ONE source: each story excludes the footage already used and avoids look-alike shots."""
     out: List[Timeline] = []; used: List[Tuple[float, float]] = []; avoid: List[Shot] = []
     cap = None if k <= 1 else max(2, len([s for s in shots if s.slots]) // k)      # share the footage fairly: reel 1 must not eat the pool
     for _ in range(k):
-        t = plan_story(shots, pop, profile, source_duration, target_s, used, avoid, snap, cap, director, notes, order if not out else None, edger, motion_dedupe, hook_first, coverage)
+        t = plan_story(shots, pop, profile, source_duration, target_s, used, avoid, snap, cap, director, notes, order if not out else None, edger, motion_dedupe, hook_first, coverage, transition)
         if len(t.clips) < min_clips and out:
             break
         if not t.clips:

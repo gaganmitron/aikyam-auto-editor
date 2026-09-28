@@ -28,6 +28,8 @@ class Options:
     transcript: bool = True                   # False (--no-transcript): skip speech-to-text entirely (no Whisper run, no transcript-derived entities or captions)
     beats: bool = True                        # story beats (beats.py) steer role fit and variety; --no-beats to disable
     experimental_selection: bool = False      # --experimental-selection: turn on the opt-in selection terms (aesthetic, learned ranker, coverage). UNPROVEN on real reels: see docs/research EXP-012/014/016
+    sequence_terms: bool = False              # --sequence-terms: EXPERIMENT (EXP-026): cost of how each shot reads after the previous one (shot size, energy, brightness, unrelated cross-video motion); off = today's planner
+    spread_sources: bool = False              # --spread-sources: EXPERIMENT (E4b, EXP-029): penalise two clips in a row from the same video when the reel uses several videos; off = today's planner
     color_match: bool = True                  # light colour match across the clips (creative/grade.py); --no-color-match to disable
     voiceover: bool = False                   # True (--voiceover): read the captions aloud (espeak-ng TTS), ducked into the mix; creative engine only
     target_seconds: Optional[float] = None    # None: the pacing profile decides (25-40 s); the classic engine falls back to 45

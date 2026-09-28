@@ -1,0 +1,512 @@
+[
+{
+"file": "f000.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f001.jpg",
+"video": "golden",
+"label": "W"
+},
+{
+"file": "f002.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f003.jpg",
+"video": "kolkata",
+"label": "M"
+},
+{
+"file": "f004.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f005.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f006.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f007.jpg",
+"video": "darshan",
+"label": "M"
+},
+{
+"file": "f008.jpg",
+"video": "padmavathi",
+"label": "C"
+},
+{
+"file": "f009.jpg",
+"video": "darshan",
+"label": "M"
+},
+{
+"file": "f010.jpg",
+"video": "kolkata",
+"label": "M"
+},
+{
+"file": "f011.jpg",
+"video": "kolkata",
+"label": "M"
+},
+{
+"file": "f012.jpg",
+"video": "golden",
+"label": "W"
+},
+{
+"file": "f013.jpg",
+"video": "golden",
+"label": "C"
+},
+{
+"file": "f014.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f015.jpg",
+"video": "golden",
+"label": "W"
+},
+{
+"file": "f016.jpg",
+"video": "darshan",
+"label": "M"
+},
+{
+"file": "f017.jpg",
+"video": "janakpur",
+"label": "M"
+},
+{
+"file": "f018.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f019.jpg",
+"video": "golden",
+"label": "M"
+},
+{
+"file": "f020.jpg",
+"video": "janakpur",
+"label": "M"
+},
+{
+"file": "f021.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f022.jpg",
+"video": "golden",
+"label": "M"
+},
+{
+"file": "f023.jpg",
+"video": "golden",
+"label": "M"
+},
+{
+"file": "f024.jpg",
+"video": "tourist",
+"label": "D"
+},
+{
+"file": "f025.jpg",
+"video": "golden",
+"label": "M"
+},
+{
+"file": "f026.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f027.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f028.jpg",
+"video": "janakpur",
+"label": "W"
+},
+{
+"file": "f029.jpg",
+"video": "janakpur",
+"label": "M"
+},
+{
+"file": "f030.jpg",
+"video": "janakpur",
+"label": "W"
+},
+{
+"file": "f031.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f032.jpg",
+"video": "padmavathi",
+"label": "M"
+},
+{
+"file": "f033.jpg",
+"video": "golden",
+"label": "W"
+},
+{
+"file": "f034.jpg",
+"video": "padmavathi",
+"label": "M"
+},
+{
+"file": "f035.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f036.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f037.jpg",
+"video": "tourist",
+"label": "C"
+},
+{
+"file": "f038.jpg",
+"video": "golden",
+"label": "C"
+},
+{
+"file": "f039.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f040.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f041.jpg",
+"video": "padmavathi",
+"label": "M"
+},
+{
+"file": "f042.jpg",
+"video": "darshan",
+"label": "M"
+},
+{
+"file": "f043.jpg",
+"video": "darshan",
+"label": "M"
+},
+{
+"file": "f044.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f045.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f046.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f047.jpg",
+"video": "tourist",
+"label": "X"
+},
+{
+"file": "f048.jpg",
+"video": "golden",
+"label": "W"
+},
+{
+"file": "f049.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f050.jpg",
+"video": "kolkata",
+"label": "M"
+},
+{
+"file": "f051.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f052.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f053.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f054.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f055.jpg",
+"video": "darshan",
+"label": "M"
+},
+{
+"file": "f056.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f057.jpg",
+"video": "golden",
+"label": "M"
+},
+{
+"file": "f058.jpg",
+"video": "padmavathi",
+"label": "D"
+},
+{
+"file": "f059.jpg",
+"video": "janakpur",
+"label": "W"
+},
+{
+"file": "f060.jpg",
+"video": "darshan",
+"label": "X"
+},
+{
+"file": "f061.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f062.jpg",
+"video": "golden",
+"label": "W"
+},
+{
+"file": "f063.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f064.jpg",
+"video": "darshan",
+"label": "C"
+},
+{
+"file": "f065.jpg",
+"video": "golden",
+"label": "D"
+},
+{
+"file": "f066.jpg",
+"video": "golden",
+"label": "W"
+},
+{
+"file": "f067.jpg",
+"video": "padmavathi",
+"label": "M"
+},
+{
+"file": "f068.jpg",
+"video": "golden",
+"label": "D"
+},
+{
+"file": "f069.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f070.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f071.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f072.jpg",
+"video": "golden",
+"label": "C"
+},
+{
+"file": "f073.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f074.jpg",
+"video": "tourist",
+"label": "C"
+},
+{
+"file": "f075.jpg",
+"video": "tourist",
+"label": "D"
+},
+{
+"file": "f076.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f077.jpg",
+"video": "darshan",
+"label": "D"
+},
+{
+"file": "f078.jpg",
+"video": "padmavathi",
+"label": "M"
+},
+{
+"file": "f079.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f080.jpg",
+"video": "tourist",
+"label": "C"
+},
+{
+"file": "f081.jpg",
+"video": "janakpur",
+"label": "W"
+},
+{
+"file": "f082.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f083.jpg",
+"video": "padmavathi",
+"label": "M"
+},
+{
+"file": "f084.jpg",
+"video": "padmavathi",
+"label": "M"
+},
+{
+"file": "f085.jpg",
+"video": "golden",
+"label": "M"
+},
+{
+"file": "f086.jpg",
+"video": "padmavathi",
+"label": "C"
+},
+{
+"file": "f087.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f088.jpg",
+"video": "tourist",
+"label": "C"
+},
+{
+"file": "f089.jpg",
+"video": "kolkata",
+"label": "M"
+},
+{
+"file": "f090.jpg",
+"video": "padmavathi",
+"label": "C"
+},
+{
+"file": "f091.jpg",
+"video": "padmavathi",
+"label": "M"
+},
+{
+"file": "f092.jpg",
+"video": "golden",
+"label": "M"
+},
+{
+"file": "f093.jpg",
+"video": "golden",
+"label": "W"
+},
+{
+"file": "f094.jpg",
+"video": "golden",
+"label": "C"
+},
+{
+"file": "f095.jpg",
+"video": "golden",
+"label": "M"
+},
+{
+"file": "f096.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f097.jpg",
+"video": "drone",
+"label": "W"
+},
+{
+"file": "f098.jpg",
+"video": "tourist",
+"label": "W"
+},
+{
+"file": "f099.jpg",
+"video": "kolkata",
+"label": "M"
+},
+{
+"file": "f100.jpg",
+"video": "darshan",
+"label": "W"
+},
+{
+"file": "f101.jpg",
+"video": "drone",
+"label": "W"
+}
+]

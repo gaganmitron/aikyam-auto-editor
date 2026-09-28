@@ -109,7 +109,8 @@
   "beam": 48,
   "min_affinity_percentile": 35,
   "coverage": 0.0,
-  "beat_repeat_penalty": 0.15
+  "beat_repeat_penalty": 0.15,
+  "transition": {"_comment": "EXP-026: cost of how a shot reads after the previous one (creative/sequencing.py); all 0 = off. Set by --sequence-terms for the A/B experiment, not yet fitted", "size_repeat": 0.0, "energy_jump": 0.0, "motion_unrelated": 0.0, "luma_jump": 0.0, "same_source_repeat": 0.0}
  },
  "beats": {
   "_comment": "Editorial knowledge, not learned: which story beats serve which arc role (0..1). weight = share of a role's affinity that comes from beat fit (0 disables).",

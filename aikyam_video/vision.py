@@ -157,6 +157,7 @@ class ClipVision(VisionProvider, EmbeddingProvider):
         self._neg = self.embed_text(NEGATIVES)
         self._aes = self.embed_text([t for pair in AESTHETIC_PAIRS for t in pair]); self._nt = self.embed_text(list(NO_TEXT_PAIR))
         from . import beats as _beats; self._beat_T, self._beat_owner = _beats.text_embeddings(self.embed_text)
+        from . import shotsize as _ss; self._size_T, self._size_owner = _ss.text_embeddings(self.embed_text)
         self.labels = _PromptGroup(self, LABEL_PROMPTS)
         self.moderation = _PromptGroup(self, MODERATION_PROMPTS)
         kg = json.load(open(kg_path or SEED, encoding="utf-8"))
@@ -200,6 +201,7 @@ class ClipVision(VisionProvider, EmbeddingProvider):
         base.aesthetic = float(np.mean(lg[0::2] - lg[1::2]))
         nt = float(self.model.logit_scale.exp()) * (self._nt @ emb); base.no_text = float(nt[0] - nt[1])
         from . import beats as _beats; base.beats = _beats.score(emb, self._beat_T, self._beat_owner, float(self.model.logit_scale.exp()))
+        from . import shotsize as _ss; base.shot_size = _ss.score(emb, self._size_T, self._size_owner, float(self.model.logit_scale.exp()))
         base.embedding, base.provider = emb.tolist(), self.name
         return base
 

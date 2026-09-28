@@ -217,7 +217,7 @@ def render_format(plan: dict, src: str, out_path: str, fmt: str, workdir: str, f
                       | {"template": plan["overlays"].get("template"), "generator": "aikyam-video"})
     ff.run([*inputs, "-filter_complex", ";".join(graph), "-map", "[vout]", *amap, "-t", f"{dur}",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-movflags", "+faststart",
+            "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart",
             "-metadata", f"comment={meta}", "-metadata", f"title={plan['overlays'].get('temple') or 'Aikyam'}",
             out_path])
     return out_path
