@@ -43,3 +43,28 @@ def test_scenes_without_an_embedding_are_skipped_not_treated_as_zero_similarity(
     scenes[2] = sv(2, 10, 15, [])                                         # no embedding: must not fabricate a boundary here
     sims = scene_similarities(scenes)
     assert len(sims) == len(two_clusters()) - 2                           # scene 2's two adjacent pairs both drop out, not zeroed
+
+
+# ---------------------------------------------------------------- integration (EXP-030): event windows reach Shot.event_index
+def test_build_shots_tags_each_shot_with_its_event_window(tmp_path):
+    """Two candidate moments either side of a real embedding-similarity drop get DIFFERENT event_index values; the source is the same integration point highlights.validate_clip already uses (ctx.event_bounds)."""
+    import subprocess
+    from aikyam_video.creative.shots import build_shots
+    from aikyam_video.models import Moment
+    f = str(tmp_path / "two_events.mp4")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=30", "-pix_fmt", "yuv420p", f], check=True)
+    vis = two_clusters()                                                            # from this file: 5 scenes 0-25s ("A"), 5 scenes 25-50s ("B") -- reuse the fixture that already proves the boundary lands at 25.0
+    moms = [Moment(momentId="mA", start=2.0, end=8.0, reason="x", score=0.5), Moment(momentId="mB", start=26.0, end=30.0, reason="x", score=0.4)]
+    shots = build_shots(f, moms, vis, None, asset_id="a1", duration=30.0, edge_info=False)
+    by_id = {s.moment_id: s for s in shots}
+    assert by_id["mA"].event_index is not None and by_id["mB"].event_index is not None
+    assert by_id["mA"].event_index != by_id["mB"].event_index                       # different real events, so different windows
+
+
+def test_build_shots_leaves_event_index_none_without_enough_scenes_or_duration():
+    from aikyam_video.creative.shots import build_shots
+    from aikyam_video.models import Moment
+    mom = [Moment(momentId="m0", start=0.0, end=4.0, reason="x", score=0.5)]
+    vis_short = two_clusters()[:2]                                                  # too few scenes for a percentile (events.py's own floor: < 4 transitions)
+    shots = build_shots("/dev/null", mom, vis_short, None, asset_id="a1", duration=None, edge_info=False)
+    assert shots[0].event_index is None

@@ -5,9 +5,11 @@ similarity drops sharply are candidate event boundaries. Validated on real foota
 of within-clip consecutive-scene similarities; 2-means clustering on the same
 embeddings scored 95% purity against hand-verified ground truth).
 
-NOT wired into the story planner yet -- detection only. See the experiment log
-before connecting this to creative/story.py.
-"""
+Wired in at TWO points (EXP-004b, EXP-030): `highlights.validate_clip` rejects a
+candidate that straddles a boundary (`crosses_event_boundary`), and `creative.shots.build_shots`
+tags each Shot with which contiguous event window it falls in (`Shot.event_index`), carried
+through to the plan's segments for the decision trace. `Shot.event_index` is not yet read by
+`creative.story`'s beam search -- see EXP-030 in the experiment log before adding a scoring term."""
 from __future__ import annotations
 from typing import List, Sequence, Tuple
 import numpy as np

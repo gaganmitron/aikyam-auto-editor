@@ -30,7 +30,8 @@ def _merge(rs: List[VisionResult]) -> VisionResult:
                         provider=rs[0].provider, moderation=mod, deities=deities, embedding=emb,
                         aesthetic=(sum(r.aesthetic for r in rs) / n) if all(r.aesthetic is not None for r in rs) else None,
                         no_text=(sum(r.no_text for r in rs) / n) if all(r.no_text is not None for r in rs) else None,
-                        beats=({k: sum(r.beats[k] for r in rs) / n for k in rs[0].beats} if all(r.beats for r in rs) else None))
+                        beats=({k: sum(r.beats[k] for r in rs) / n for k in rs[0].beats} if all(r.beats for r in rs) else None),
+                        shot_size=({k: sum(r.shot_size[k] for r in rs) / n for k in rs[0].shot_size} if all(r.shot_size for r in rs) else None))
 
 
 def analyze_scenes(path: str, scenes: List[Scene], vision: VisionProvider, samples: int = 3) -> List[SceneVision]:

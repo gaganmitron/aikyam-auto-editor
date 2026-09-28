@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 from ..audio import AudioProfile
 from ..models import Moment, SceneVision
-from . import edges as _edges, mlx as _mlx
+from . import edges as _edges, events as _events, mlx as _mlx
 from .model import Shot, SlotFeatures
 
 HOP = 0.5
@@ -123,8 +123,9 @@ def diverse_top(moments, beats_of, top_k: int, reserve: int = 4):
 
 def build_shots(src: str, moments: Sequence[Moment], vision: Sequence[SceneVision], audio: Optional[AudioProfile], top_k: int = 16, asset_id: str = "a1", edge_info: bool = True,
                 duration: Optional[float] = None, use_speech: bool = True, diverse: bool = True) -> List[Shot]:
-    """One Shot per validated moment (best `top_k` by score): labels, mean embedding, event means and per-slot features."""
+    """One Shot per validated moment (best `top_k` by score): labels, mean embedding, event means, per-slot features and which real-event window (EXP-030) it falls in."""
     shots = []; ml_cuts = _mlx.cuts(src) if edge_info else None; vad = _mlx.speech(src) if (edge_info and use_speech) else None       # neural evidence, once per file (None -> heuristics); use_speech=False: the recorded voice is not evidence for anything
+    windows = _events.event_windows(vision, duration) if (duration and vision) else []            # contiguous (start, end) real-event windows for this source; [] on a short/uninformative clip (events.py's own floor)
     parts = partition_moments(moments)
     chosen = diverse_top(parts, lambda m: moment_beats(m, vision), top_k) if diverse else sorted(parts, key=lambda m: (-m.score, m.start))[:top_k]
     for m in sorted(chosen, key=lambda m: (-m.score, m.start)):
@@ -133,6 +134,10 @@ def build_shots(src: str, moments: Sequence[Moment], vision: Sequence[SceneVisio
         wts = [max(min(v.end, m.end) - max(v.start, m.start), 1e-3) for v in sv]
         for v, w in zip(sv, wts):
             for k, c in v.vision.labels.items(): labels[k] = labels.get(k, 0.0) + c * w / sum(wts)
+        szs: Dict[str, float] = {}
+        if sv and all(v.vision.shot_size for v in sv):                                                  # how tight the window is, time-weighted like the labels (stored only: no selection term uses it yet, EXP-025)
+            for v, w in zip(sv, wts):
+                for k, c in v.vision.shot_size.items(): szs[k] = szs.get(k, 0.0) + c * w / sum(wts)
         embs = [np.asarray(v.vision.embedding) for v in sv if v.vision.embedding]
         bts: Dict[str, float] = {}
         if sv and all(v.vision.beats for v in sv):                                                      # what the window is FOR in the story, time-weighted like the labels
@@ -142,7 +147,8 @@ def build_shots(src: str, moments: Sequence[Moment], vision: Sequence[SceneVisio
         if embs:
             e = np.mean(embs, axis=0); emb = (e / (np.linalg.norm(e) + 1e-9)).tolist()
         ev = {k: audio.event_score(k, m.start, m.end) for k in (audio.events if audio is not None else {})}
-        sh = Shot(m.momentId, m.start, m.end, m.momentId, m.score, labels, [e.entityId for e in m.entities], emb, analyze_window(src, m.start, m.end, audio), ev, asset_id=asset_id, beats=bts)
+        ei = next((i for i, (ws, we) in enumerate(windows) if ws <= (m.start + m.end) / 2 < we), None)          # window containing the shot's midpoint
+        sh = Shot(m.momentId, m.start, m.end, m.momentId, m.score, labels, [e.entityId for e in m.entities], emb, analyze_window(src, m.start, m.end, audio), ev, asset_id=asset_id, beats=bts, shot_size=szs, event_index=ei)
         if edge_info:                                                                                   # real cuts and pauses around the window (edge snapping)
             lo, hi = max(0.0, m.start - 1.5), (min(duration, m.end + 1.5) if duration else m.end + 1.5)
             sh.cuts = [c for c in ml_cuts if lo <= c <= hi] if ml_cuts is not None else [c for c in _edges.detect_cuts(src, lo, hi)]      # TransNetV2 when available, else the frame-difference detector

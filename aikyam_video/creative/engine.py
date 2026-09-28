@@ -21,6 +21,8 @@ from .stills import motion_for
 from .musicdna import analyze_track
 from .shots import Population, build_shots
 
+SEQUENCE_TERMS = {"size_repeat": 0.10, "energy_jump": 0.10, "motion_unrelated": 0.20, "luma_jump": 0.10}      # prior weights for --sequence-terms (EXP-026): reasoned, not fitted; the A/B choices decide
+SPREAD_TERMS = {"same_source_repeat": 0.30}      # --spread-sources (E4b / EXP-029): one term alone, so its effect is not confounded
 EXPERIMENTAL_COVERAGE = 0.5      # story.py coverage weight used by --experimental-selection (EXP-014: synthetic evidence only)
 PRESENCE_EVENTS = ("chant", "bhajan", "speech", "bell", "conch")
 
@@ -168,7 +170,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
         director = make_director(getattr(o, "llm", None))
     notes = {k.id: " ".join(t.text for t in x.transcript.segments if t.end > k.start and t.start < k.end) for x in videos if x.transcript for k in shots if k.asset_id == x.id}
     edger = _make_edger(by_id, use_audio=not silent) if o.edge_snap else None
-    stories = story.plan_stories(shots, pop, prof, D, max(1, o.reels), o.target_seconds, snap, director=director, notes=notes, order=o.order, edger=edger, motion_dedupe=o.motion_dedupe, hook_first=o.hook_first, coverage=EXPERIMENTAL_COVERAGE if o.experimental_selection else None)
+    stories = story.plan_stories(shots, pop, prof, D, max(1, o.reels), o.target_seconds, snap, director=director, notes=notes, order=o.order, edger=edger, motion_dedupe=o.motion_dedupe, hook_first=o.hook_first, coverage=EXPERIMENTAL_COVERAGE if o.experimental_selection else None, transition=SEQUENCE_TERMS if o.sequence_terms else (SPREAD_TERMS if o.spread_sources else None))
     if not stories:
         raise RuntimeError("no story could be built from the candidate shots")
     plans = []
@@ -221,6 +223,7 @@ def build_plans(ctx: Ctx) -> List[dict]:
             if i > 0 and c.transition_in: d["transitionIn"] = {k: c.transition_in[k] for k in ("type", "durationSeconds", "reason")}
             if i > 0 and c.audio_lead: d["audioLead"] = c.audio_lead
             if c.shot.beats: d["beat"] = max(c.shot.beats, key=c.shot.beats.get); d["beats"] = {k: round(v, 2) for k, v in sorted(c.shot.beats.items(), key=lambda kv: -kv[1])[:3]}      # what this clip IS in the story
+            if c.shot.event_index is not None: d["eventIndex"] = c.shot.event_index                                      # which real-event window (EXP-030) this clip came from; visible in the trace, not yet used to pick clips
             if multi: d["assetId"] = S.id; d["kind"] = "video"
             segs.append(d); probes.append((S.path, (c.start + c.end) / 2, not getattr(S.info, "hdr", False)))      # HDR footage is measured before tone-mapping: leave it alone
         if o.color_match and o.renderer == "ffmpeg":                  # only the ffmpeg renderer draws the grade

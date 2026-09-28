@@ -42,6 +42,7 @@ class VisionResult(BaseModel):
     moderation: Dict[str, float] = Field(default_factory=dict)   # unsafe-content label -> confidence
     deities: Dict[str, float] = Field(default_factory=dict)      # KG deityId -> zero-shot confidence (visual guess)
     beats: Optional[Dict[str, float]] = None                     # story-beat distribution (beats.py): what the frame is FOR in the story; None without an image-text model
+    shot_size: Optional[Dict[str, float]] = None                 # shot-size distribution (shotsize.py, EXP-025): wide / medium / close / detail; None without an image-text model
     no_text: Optional[float] = None                              # zero-shot "no text overlay / title card" score (raw logit difference); low for credits and subtitles
     aesthetic: Optional[float] = None                            # zero-shot look quality (CLIP-IQA-style antonym prompts, raw logit difference); None without an image-text model
     embedding: Optional[List[float]] = Field(default=None, exclude=True)  # image embedding; stored separately

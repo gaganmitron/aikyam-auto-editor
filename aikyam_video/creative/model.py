@@ -44,6 +44,8 @@ class Shot:
     cuts: List[float] = field(default_factory=list)                     # absolute source times of hard cuts in/around the window (coarse)
     pauses: List[List[float]] = field(default_factory=list)             # absolute [start, end] of pauses in the live sound (relative to the shot's own level)
     beats: Dict[str, float] = field(default_factory=dict)               # story-beat distribution of the window (beats.py); {} = unknown
+    shot_size: Dict[str, float] = field(default_factory=dict)          # how tight the window is (shotsize.py): wide / medium / close / detail distribution; {} = unknown
+    event_index: Optional[int] = None                                    # which contiguous real-event window (creative/events.py) the shot mostly falls in; None = unknown or single-event source (EXP-030)
 
     @property
     def length(self) -> float:
