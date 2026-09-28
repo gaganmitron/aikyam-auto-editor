@@ -1,8 +1,10 @@
 # Aikyam Video Intelligence: handoff for the next agent
 
+> **Read `CLAUDE.md` (repo root) first: it is the entry point and has the reading order, the user's rules and the GPU-laptop plan. This file is the build history and file map. Sections 0-11 are older; §12 (2026-09-25) is the current update, and where they conflict §12 and `CLAUDE.md` win.**
+
 Written 2026-09-21. Read this first; then `README.md`, `docs/ARCHITECTURE.md`, `docs/CREATIVE_RESEARCH.md`, `docs/OSS_AUDIT.md`. The repo is **not** under git (no version control here): back up before large refactors.
 
-## 0. Ground rules the user gave (follow them)
+## 0. Ground rules the user gave (SUPERSEDED in part by CLAUDE.md §3: the user later asked for downloads and for tests on many videos)
 
 1. **Test only on the user's own footage:** the four Pexels videos + the chant mp3 in the repo root (see section 8). Do NOT build other test footage or run bulk/other videos ("focus on one/four, not bunches"). The user reminded us of this twice. Unit tests with tiny generated media are fine for plumbing, but evaluations/A-B renders use the four clips only. `samples/ganga-aarti-haridwar.webm` is the only other kept real clip (the user asked earlier to keep just that one; it is no longer the focus).
 2. **Do not download videos/audio unless asked.** When you need footage, tell the user where to get it.
@@ -181,3 +183,16 @@ The user gave a research-engineering protocol (root `new.md`: baseline-first, me
 No second real clip was available to validate #2 against (the four Pexels clips + Ganga sample are gone, per §8/§10) -- validation for the multi-asset case leaned on `test_multi_engine.py`'s synthetic-but-real-FFmpeg fixture instead. If the user supplies another real recording, re-run `docs/research/experiment_matrix.md`'s EXP-001/002 checks against it.
 
 Not done / honest limits: no aesthetic scorer (the LAION head needs CLIP ViT-L embeddings, we compute SigLIP), no person detector (YOLO is AGPL; RT-DETR untested/RAM), the DP for in/out points is an exhaustive search over few candidates, and none of this has been compared on real footage: when new clips arrive, run `python -m aikyam_video.cli process ... --variants 3` and judge by eye; check the `decisions` in `edit-plan.json` for `edge` entries (kinds cut/phrase/pause/onset/lull).
+
+## 12. Update 2026-09-25: what changed since §11 (details and numbers in `docs/research/experiment_matrix.md` EXP-012 to EXP-024)
+- **Repo is under git now** (private, `github.com/gaganmitron/aikyam-auto-editor`); the "not under git" line at the top of this file is obsolete.
+- **New modes/flags:** `--source-audio keep|off|bed` (`bed` = the recording's own most music-like stretch as ONE continuous soundtrack, picked across all inputs, `creative/bed.py`), `--no-transcript`, `--no-captions`, `--voiceover` (offline TTS, rejected by the user as poor, off by default), `--no-color-match`, `--no-beats`, `--experimental-selection`, `--vision-model`, `--opening establish|hook`.
+- **Vision/story:** 10 story beats (`beats.py`) steer role fit and variety; graphic/text-overlay guard (`highlights.NO_TEXT_MIN`); dark-opening guard; colour match between clips (`creative/grade.py`); metadata-only titles (no invented deity/ritual names); long-video chunking (>30 min).
+- **Footage quality:** dead slots (blocked lens, whip) never inside a clip (`shots.dead_slots`, `story.has_dead`), overlaps between same-take clips re-resolved after the top-up.
+- **QC:** `weak_shots` now measures only the real picture rows over 3 frames; `role_label_consistency` needs unambiguous anchor scenes. Both were measuring themselves before (EXP-020).
+- **Multi-video reels:** four Tirumala/Tirupati videos were combined into one reel (`results/tirumala_multi2/`, not in git). Lessons: check every download by eye (TV templates, ticket-site recordings, AI images, another city at the end of a "Tirumala" video), and crop/trim flawed sources into new files instead of using them raw.
+- **Benchmarks added (`tools/`):** `bench_gate.py` (70 clip windows), `bench_subject.py` (22 frames), `bench_suite.py` (5-video regression + `docs/research/suite_baseline.json`), plus earlier `bench_labels/beats/models/vlm/clips/scoring`, `fit_ranker.py`.
+- **Negative results, not shipped:** label calibration, learned ranker, small VLMs on CPU, image-model swap, tighter framing, subject locators (SigLIP crops, OWL-ViT) vs centre crop, clip-quality gate beyond dead footage.
+- **Inputs:** the user had all non-Tirumala videos deleted on 2026-09-25 (Golden Temple, Janakpur, Kolkata); `inputs/` and `results/` are git-ignored, so a fresh clone has no footage: see `CLAUDE.md` §7C for how to re-create it.
+- **Environment:** the next machine has a 6 GB GPU. The code only uses a GPU in Whisper; vision, CLAP, TransNetV2 and Beat This! must be moved to CUDA first (`CLAUDE.md` §7B).
+- **Last full test run (CPU):** 333 passed, 5 skipped, 1 known-red test left red on purpose (`test_story_follows_the_arc_and_serves_each_role_with_the_right_kind_of_shot`); one further failure found in that run was fixed afterwards and the touched files re-tested, but the full suite was not repeated.
