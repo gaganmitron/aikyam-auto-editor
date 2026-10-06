@@ -5,7 +5,7 @@ import json, os
 from typing import Dict, List, Optional
 import numpy as np
 from . import ffmpeg as ff, kg as _kg, providers, transcribe, vision as _vision, entities as _entities  # noqa: F401 (register)
-from .analysis import analyze_scenes
+from .analysis import analyze_scenes, text_track
 from .audio import AudioProfile, ClapAudioTagger, profile as audio_profile
 from .highlights import build_ctx, detect_black, generate_moments
 from .metrics import METRICS
@@ -21,6 +21,7 @@ from .thumbnails import generate_thumbnails
 # artifact names (the contract between stages / workers)
 TRANSCRIPT, SCENES, VISION, EMBEDDINGS = "transcript.json", "scenes.json", "vision.json", "embeddings.json"
 AUDIO, BLACK, ENTITIES, MOMENTS, PLAN = "audio.npz", "black.json", "entities.json", "moments.json", "edit-plan.json"
+TEXTFRAMES = "textframes.json"          # [[t, no_text]] every 2 s over the whole file (analysis.text_track); absent in older caches = no dense check
 ANALYSIS_ARTIFACTS = [SCENES, VISION, EMBEDDINGS, AUDIO, BLACK]
 _cache: Dict[str, object] = {}
 
@@ -76,6 +77,7 @@ def scene_analysis(src: str, art: str, o: Options) -> List[SceneVision]:
     _dump(os.path.join(art, EMBEDDINGS), {s.sceneId: s.vision.embedding for s in sv if s.vision.embedding})
     audio_profile(src, tagger=_audio_tagger(o)).save(os.path.join(art, AUDIO))
     _dump(os.path.join(art, BLACK), detect_black(src))
+    _dump(os.path.join(art, TEXTFRAMES), text_track(src, vp))
     return sv
 
 
@@ -99,8 +101,9 @@ def highlights(src: str, art: str, o: Options):
     if o.festival_id: hints["FESTIVAL"] = o.festival_id
     ents = _entities.resolve_media_entities(tr, vis, ex, hints)
     _dump(os.path.join(art, ENTITIES), {k: [r.model_dump() for r in v] for k, v in ents.items()})
-    ctx = build_ctx(src, info, scenes, vis, tr, audio, ex, black=black, profile=o.profile, allow_silent=o.allow_silent)
-    cfg = ScoringConfig.load(o.scoring_config)
+    ctx = build_ctx(src, info, scenes, vis, tr, audio, ex, black=black, profile=o.profile, allow_silent=o.allow_silent,
+                    text_frames=_load(art, TEXTFRAMES) if os.path.exists(os.path.join(art, TEXTFRAMES)) else None)
+    cfg = ScoringConfig.load(o.scoring_config, engine=o.engine)
     if o.silent_source:                                                      # the recorded sound (narration, chanting) is not part of the reel: it must not decide which moments are picked
         cfg.weights = {**cfg.weights, "audioImportance": 0.0, "semanticImportance": 0.0}
     if o.experimental_selection:                                             # opt-in terms; explicit weights from --scoring-config still win
@@ -153,7 +156,10 @@ def _plan_classic(src, art, o, info, tr, vis, audio, moments) -> dict:
               moments=moments, transcript=tr, vision=vis, entities=_load_entities(art), target_s=target, caption_lang=clang,
               caption_mode=o.caption_mode, aspect=spec["aspect"], fmt=spec["outputFormat"], location=o.location,
               transition=o.transition, transition_s=o.transition_seconds, snap=quiet_snap(audio))
-    if o.planner == "llm":
+    if o.engine == "v4":
+        from .creative import selector_v4
+        p = selector_v4.plan_edit(**kw)
+    elif o.planner == "llm":
         from .planner_llm import plan_with_llm
         p = plan_with_llm(**kw)
     else:
@@ -171,6 +177,12 @@ def _plan_classic(src, art, o, info, tr, vis, audio, moments) -> dict:
         s["subjectPath"] = [[round(t, 2), round(x, 3)] for t, x in track_subject(src, s["start"], s["end"])]
     if not o.captions:
         p["captions"]["cues"] = []; p["captions"]["enabled"] = False
+    if o.engine == "v4" and o.silent_source:                                  # own audio only: the recorded sound is never cut per clip; V4 then renders through the shared mixer (see render)
+        from .creative import bed
+        p["audio"]["preserveOriginal"] = False; p["audio"]["sourceAudio"] = o.source_audio
+        if o.source_audio == "bed":
+            pick = bed.pick_across([(audio, src)], p["durationSeconds"] + 1.0)
+            if pick: p["audio"]["bed"] = {"start": pick[0], "score": pick[1], "why": pick[2], "path": os.path.abspath(pick[3])}
     validate_plan(p, info.duration)
     _dump(os.path.join(art, PLAN), p)
     return p
@@ -181,7 +193,7 @@ def _plan_classic(src, art, o, info, tr, vis, audio, moments) -> dict:
 def render(src: str, art: str, o: Options) -> Dict[str, str]:
     p = _load(art, PLAN)
     files = {}
-    if p.get("creative", {}).get("engine") == "creative":
+    if p.get("creative", {}).get("engine") == "creative" or p["audio"].get("sourceAudio"):      # V4 with --source-audio off/bed shares the creative mixer + QC
         return _render_creative(src, art, o, p)
     thumbs = generate_thumbnails(src, p, _provider("vision", o.vision), art)
     p["thumbnail"]["timestamp"] = thumbs["timestamp"]

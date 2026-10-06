@@ -174,7 +174,7 @@ def plan_story(shots: Sequence[Shot], pop: Population, profile: PacingProfile, s
         dec.append({"type": "order", "assets": list(forced_order), "shots": [s.id for s in picked]}); director = None
     if director is not None:                                                              # LLM director: proposes WHAT/ORDER/LENGTH; every proposal is validated, any problem -> the beam result above
         try:
-            info = [{"shotId": s.id, "kind": s.kind, "source": s.asset_id, "seconds": round(s.length, 1), "labels": {k: round(v, 2) for k, v in sorted(s.labels.items(), key=lambda kv: -kv[1])[:4]},
+            info = [{"shotId": s.id, "kind": s.kind, "source": s.asset_id, "seconds": round(s.length, 1), "mid": round((s.start + s.end) / 2, 2), "labels": {k: round(v, 2) for k, v in sorted(s.labels.items(), key=lambda kv: -kv[1])[:4]},
                      "entities": s.entities[:3], "said": (notes or {}).get(s.id, "")[:160], "quality": round(agg[s.id]["quality"], 2), "energy": round(agg[s.id]["energy"], 2),
                      "bestRoles": [r for r, _ in sorted(aff[s.id].items(), key=lambda kv: -kv[1])[:2]]} for s in pool0]
             prop = director(info, {"name": profile.name, "minShot": profile.min_shot, "maxShot": profile.max_shot, "opening": profile.opening}, T)

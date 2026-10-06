@@ -179,6 +179,10 @@ class ClipVision(VisionProvider, EmbeddingProvider):
     def scores(self, emb: np.ndarray) -> Dict[str, float]:
         return self.labels.score(self, emb)
 
+    def no_text_score(self, frame: np.ndarray) -> float:
+        """Only the title-card / graphic score of one frame (analysis.text_track): no labels, no beats."""
+        nt = float(self.model.logit_scale.exp()) * (self._nt @ self.embed_image(frame)); return float(nt[0] - nt[1])
+
     @staticmethod
     def _gate(s: Dict[str, float]) -> Dict[str, float]:
         """Fireworks / effigy burning outranks aarti (both are 'fire'); a person-with-lamp aarti prompt keeps night river aartis."""

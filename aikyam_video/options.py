@@ -51,6 +51,8 @@ class Options:
     transition_seconds: float = 0.5
     renderer: str = "ffmpeg"                  # ffmpeg (default, deterministic) | remotion (React layouts) | diffusion (diffusionstudio runtime picture + FFmpeg finishing)
     allow_silent: bool = False                # accept picture-only videos (stock footage; give it sound with --music-file)
+    slowmo: bool = True                       # reveal / opening / closing clips play in slow motion (plan segment "speed" < 1; the timeline length is unchanged, less source is used)
+    framing: str = "full"                     # classic (wide subjects shown whole over blurred fill) | full (full-bleed 9:16: wide subjects get a slow pan instead of blur)
     opening: Optional[str] = None             # hook | establish (default: the pacing profile's, hook)
     order: Optional[List[str]] = None         # force the story order by asset id, e.g. ["v3", "v1", "i2"] (one clip per listed asset)
     hook_first: bool = False                  # force the strongest opener to start the reel (measured on real footage: shorter reels, worse opener on one set -> opt-in)
@@ -58,11 +60,12 @@ class Options:
     subtitle: Optional[str] = None
     edge_snap: bool = True                    # start/stop clips on real cuts and pauses (creative/edges.py); False = the earlier fixed-grid windows
     motion_dedupe: bool = True                # same-looking shots that MOVE differently are different moments (False = appearance-only duplicate rule)
-    engine: str = "creative"                  # creative (story-aware editing engine) | classic (greedy score-ordered planner)
+    engine: str = "creative"                  # creative (story-aware editing engine) | classic (greedy score-ordered planner) | v4 (simple moment selector)
     pacing: Optional[str] = None              # contemplative | devotional | festive (None: chosen from the footage)
     reels: int = 1                            # reels per source video (creative engine)
     qc: bool = True                           # post-render quality control + deterministic re-edit
     qc_attempts: int = 2
+    director_file: Optional[str] = None       # --director-file F.json: the edit (shots, roles, seconds) comes from a human/Claude-Code director; if F is missing, F.candidates.json + F.sheet.jpg are written for the director to read
     planner: str = "deterministic"            # deterministic | llm
     min_source_seconds: float = 5.0
     max_source_seconds: float = 4 * 3600.0

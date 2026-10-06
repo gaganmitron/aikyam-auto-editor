@@ -49,3 +49,18 @@ def analyze_scenes(path: str, scenes: List[Scene], vision: VisionProvider, sampl
             if rs:
                 out.append(SceneVision(sceneId=s.sceneId, start=s.start, end=s.end, vision=_merge(rs)))
     return out
+
+
+def text_track(path: str, vision: VisionProvider, step: float = 2.0) -> List[List[float]]:
+    """[[t, no_text]] every `step` s over the WHOLE file. The per-scene keyframes (3 per scene, averaged) miss a graphic that sits for a few seconds inside a long scene
+    (a 56 s drone scene hid a "Leave a like!" animation). [] when the provider has no no_text score (heuristic vision)."""
+    score = getattr(vision, "no_text_score", None)
+    if score is None:
+        return []
+    with tempfile.TemporaryDirectory() as td:
+        ff.run(["-i", path, "-vf", f"fps=1/{step},scale=384:-2", "-an", "-q:v", "4", os.path.join(td, "%06d.jpg")])
+        names = sorted(os.listdir(td)); out = []
+        for i, n in enumerate(names):
+            img = cv2.imread(os.path.join(td, n))
+            if img is not None: out.append([round(i * step + step / 2, 2), round(score(img), 3)])
+    return out

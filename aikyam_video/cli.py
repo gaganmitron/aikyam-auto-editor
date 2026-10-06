@@ -18,8 +18,10 @@ def main(argv=None) -> int:
         s.add_argument("--language", help="force source language code (default: detect)")
         s.add_argument("--translate", action="store_true", help="whisper translate to English")
         s.add_argument("--caption-lang"); s.add_argument("--caption-mode", choices=["sentence", "word"], default="sentence")
-        s.add_argument("--no-captions", action="store_true", help="render with no caption overlay at all")
-        s.add_argument("--source-audio", choices=["keep", "off", "bed"], default="keep", help="off: drop the recorded sound entirely; cuts follow the picture and the music, and music is always added. bed: use the recording's own most music-like stretch as ONE continuous soundtrack (e.g. Tirumala's devotional music), never cut per clip (creative engine)")
+        s.add_argument("--no-captions", action="store_true", help="no caption overlay (already the default)")
+        s.add_argument("--with-captions", action="store_true", help="opt in to caption overlays (off by default)")
+        s.add_argument("--with-transcript", action="store_true", help="opt in to Whisper speech-to-text (off by default)")
+        s.add_argument("--source-audio", choices=["keep", "off", "bed"], default="off", help="(default off: the recorded sound is never in the reel; our own music is added) off: drop the recorded sound entirely; cuts follow the picture and the music, and music is always added. bed: use the recording's own most music-like stretch as ONE continuous soundtrack (e.g. Tirumala's devotional music), never cut per clip (creative engine)")
         s.add_argument("--no-transcript", action="store_true", help="skip speech-to-text entirely: no Whisper run, no transcript-derived entities or captions")
         s.add_argument("--experimental-selection", action="store_true", help="EXPERIMENTAL: also rank clips by look quality, the learned ranker and coverage of the whole recording (each has weak or synthetic evidence so far)")
         s.add_argument("--sequence-terms", action="store_true", help="EXPERIMENTAL (EXP-026): penalise awkward cuts when ordering clips (same size twice, big energy or brightness jumps, unrelated cross-video action); off by default")
@@ -28,7 +30,7 @@ def main(argv=None) -> int:
         s.add_argument("--no-color-match", action="store_true", help="do not colour-match the clips to each other (creative engine, ffmpeg renderer)")
         s.add_argument("--voiceover", action="store_true", help="read the captions aloud (offline espeak-ng TTS), ducked into the mix; creative engine only")
         s.add_argument("--target-seconds", type=float, default=None, help="reel length (default: chosen by the pacing profile, 25-40 s)")
-        s.add_argument("--engine", choices=["creative", "classic"], default="creative", help="creative: story-aware editing engine; classic: greedy score-ordered planner")
+        s.add_argument("--engine", choices=["creative", "classic", "v4"], default="creative", help="creative: story-aware editing engine; classic: greedy score-ordered planner; v4: simple deterministic moment selector (creative/selector_v4.py, EXP-V4-001)")
         s.add_argument("--pacing", choices=["contemplative", "devotional", "festive"], help="force a pacing profile (default: from the footage)")
         s.add_argument("--reels", type=int, default=1, help="reels to cut from this one source (creative engine)")
         s.add_argument("--no-qc", action="store_true", help="skip post-render quality control")
@@ -41,6 +43,8 @@ def main(argv=None) -> int:
         s.add_argument("--music", choices=["auto", "off"], default="auto", help="auto: add a licensed, topic-matched track when it suits; off: original audio only")
         s.add_argument("--music-volume", type=float, default=0.5, help="music level 0.1-1.0 (before ducking under the original audio)")
         s.add_argument("--opening", choices=["hook", "establish"], help="how the reel opens: hook = strongest close shot first (default), establish = wide setting first")
+        s.add_argument("--no-slowmo", action="store_true", help="play every clip at normal speed (default: reveal 0.6x, opening 0.8x, closing 0.75x)")
+        s.add_argument("--framing", choices=["classic", "full"], default="full", help="classic: wide subjects shown whole over blurred fill; full: full-bleed 9:16, wide subjects get a slow pan (no blurred bands)")
         s.add_argument("--order", help="force the order by asset id, comma separated, e.g. v3,v1,i2 (ids are printed at analysis: v1.. videos, i1.. images in input order)")
         s.add_argument("--hook-first", action="store_true", help="always start with the strongest hook shot (opt-in: see docs/OSS_AUDIT.md results)")
         s.add_argument("--title", help="opening title text (first ~3.5 s, inside the platform safe zone)")
@@ -56,6 +60,7 @@ def main(argv=None) -> int:
         s.add_argument("--transition", choices=["crossfade", "fade", "cut"], default="crossfade", help="how consecutive moments are joined")
         s.add_argument("--transition-seconds", type=float, default=0.5)
         s.add_argument("--renderer", choices=["ffmpeg", "remotion", "diffusion"], default="ffmpeg")
+        s.add_argument("--director-file", help="take the edit from a director file (see creative/engine._file_director). Missing file: writes <file>.candidates.json and <file>.sheet.jpg to decide from, then plans normally")
         s.add_argument("--planner", choices=["deterministic", "llm"], default="deterministic")
         s.add_argument("--audio-tagger", choices=["auto", "clap", "none"], default="auto")
     w = sub.add_parser("worker", help="event-driven worker (Kafka): one role, one job at a time")
@@ -94,12 +99,12 @@ def main(argv=None) -> int:
         uvicorn.run("aikyam_video.api:app", factory=True, host=a.host, port=a.port); return 0
     if a.vision_model: os.environ["VISION_MODEL"] = a.vision_model
     o = pipeline.Options(vision=a.vision, whisper_model=a.whisper_model, language=a.language, translate=a.translate,
-                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=not a.no_captions, source_audio=a.source_audio, transcript=not a.no_transcript, color_match=not a.no_color_match, experimental_selection=a.experimental_selection, sequence_terms=a.sequence_terms, spread_sources=a.spread_sources, beats=not a.no_beats, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
+                         caption_lang=a.caption_lang, caption_mode=a.caption_mode, captions=a.with_captions and not a.no_captions, source_audio=a.source_audio, transcript=a.with_transcript and not a.no_transcript, color_match=not a.no_color_match, experimental_selection=a.experimental_selection, sequence_terms=a.sequence_terms, spread_sources=a.spread_sources, beats=not a.no_beats, voiceover=a.voiceover, target_seconds=a.target_seconds, engine=a.engine, pacing=a.pacing, reels=a.reels, qc=not a.no_qc, qc_attempts=a.qc_attempts,
                          scoring_config=a.scoring_config, temple_id=a.temple_id, location=a.location, festival_id=a.festival_id,
                          music_track=a.music_track, music=a.music, music_volume=a.music_volume, renderer=a.renderer, transition=a.transition, transition_seconds=a.transition_seconds, planner=a.planner, audio_tagger=a.audio_tagger,
                          formats=[a.format] if a.format else ["reel", "square", "landscape"])
     o.music_web = a.music_web; o.hook_first = a.hook_first; o.title, o.subtitle = a.title, a.subtitle; o.edge_snap = not a.no_edge_snap; o.motion_dedupe = not a.no_motion_dedupe
-    o.opening = a.opening; o.order = [x.strip() for x in a.order.split(",") if x.strip()] if a.order else None
+    o.slowmo = not a.no_slowmo; o.framing = a.framing; o.director_file = a.director_file; o.opening = a.opening; o.order = [x.strip() for x in a.order.split(",") if x.strip()] if a.order else None
     o.allow_silent = a.allow_silent or bool(a.music_file) or a.source_audio in ("off", "bed")          # quiet footage is fine when its per-clip sound is never used
     if a.source_audio in ("off", "bed") and a.engine == "classic":
         print(f"error: --source-audio {a.source_audio} needs the creative engine", file=sys.stderr); return 1

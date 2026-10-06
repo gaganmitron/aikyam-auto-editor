@@ -2,6 +2,7 @@
   python tools/bench_suite.py run [names...]        run the pipeline on each suite video -> results/suite/<name>/  (one at a time: RAM), records seconds and peak RSS
   python tools/bench_suite.py score                 results/suite/scorecard.json = evaluation.evaluate() + story metrics per video
   python tools/bench_suite.py compare BASELINE.json diff the scorecard against a saved one and flag regressions (exit 1 if any)
+  SUITE_ENGINE=v4 python tools/bench_suite.py run|score     same, with the V4 selector (results/suite_v4/); then diff the two scorecards
   python tools/bench_suite.py save                  copy the scorecard to docs/research/suite_baseline.json
 Options are fixed (--source-audio bed --no-transcript --no-captions): no downloads, no speech model, so a run is repeatable. Videos: five different sources (inputs/, not committed)."""
 import json, os, resource, shutil, subprocess, sys, time
@@ -10,14 +11,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SUITE = {"golden": "inputs/golden_temple_full.webm", "darshan": "inputs/tirumala_darshan_2021.mp4", "drone": "inputs/tirumala_drone_2025.mp4",
          "janakpur": "inputs/bench_ganga_aarti_janakpur.webm", "kolkata": "inputs/bench_temple_aarti_kolkata.webm"}
 OPTS = ["--source-audio", "bed", "--no-transcript", "--no-captions"]
-OUT = "results/suite"; BASE = "docs/research/suite_baseline.json"
+ENGINE = os.environ.get("SUITE_ENGINE", "creative")      # SUITE_ENGINE=v4: same videos, same options, V4 selector -> results/suite_v4/ (A/B against the creative engine)
+OUT = "results/suite" + ("" if ENGINE == "creative" else "_" + ENGINE); BASE = "docs/research/suite_baseline.json"
 
 
 def run(names):
     os.makedirs(OUT, exist_ok=True); tm = json.load(open(f"{OUT}/timing.json")) if os.path.exists(f"{OUT}/timing.json") else {}
     for n in names or SUITE:
         d = f"{OUT}/{n}"; shutil.rmtree(d, ignore_errors=True); before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss; t0 = time.time()
-        p = subprocess.run([".venv/bin/aikyam-video", "process", SUITE[n], "-o", d, *OPTS], capture_output=True, text=True)
+        p = subprocess.run([".venv/bin/aikyam-video", "process", SUITE[n], "-o", d, "--engine", ENGINE, *OPTS], capture_output=True, text=True)
         tm[n] = {"seconds": round(time.time() - t0), "ok": p.returncode == 0, "peak_rss_mb_children": round(resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024)}
         print(n, tm[n], (p.stderr[-300:] if p.returncode else ""), flush=True); json.dump(tm, open(f"{OUT}/timing.json", "w"), indent=1)
 

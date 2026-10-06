@@ -153,3 +153,28 @@ def camera_path(track: List[Tuple[float, float, float]], win: float) -> dict:
         cx = float(np.median([q for _, q in path])) if path else 0.5
     c = _cx(f(t), win); inside = (x - h >= c - win / 2 - 1e-6) & (x + h <= c + win / 2 + 1e-6)
     return {"mode": mode, "path": path, "subjectX": cx, "inFrame": float(inside.mean()), "reason": why}
+
+
+SCAN_SPAN_MAX = 0.6     # a scan never travels past the 60% of the source width that layout.WINDOW_MAX allows
+
+
+def scan_path(track: List[Tuple[float, float, float]], win: float, length: float, spread: float) -> dict:
+    """Full-bleed answer to a subject WIDER than the crop window: instead of fitting the whole frame over blurred fill, a pure-crop window (`win`) glides across the
+    wide subject for the whole clip (a slow, steady pan: the classic way an editor shows a facade, a crowd or a procession in 9:16).
+    Direction follows the tracked subject's drift when it has one, else left to right. Travel = the subject span (1.25 x extent, <= 60% of the width) minus the window.
+    Same return shape as camera_path (inFrame here = share of samples whose subject CENTRE is inside the moving window, since the whole subject is wider than the window by construction; a pan that misses the subject is still caught)."""
+    span = float(np.clip(1.25 * spread, win, max(win, SCAN_SPAN_MAX))); half = (span - win) / 2
+    cx = float(np.median([x for _, x, _ in track])) if track else 0.5
+    cx = float(np.clip(cx, span / 2, 1 - span / 2)) if span < 1 else 0.5
+    sign = 1.0
+    if len(track) > 2:
+        t = np.array([a for a, _, _ in track], float); x = np.array([b for _, b, _ in track], float)
+        if np.ptp(t) > 0 and abs(np.polyfit(t, x, 1)[0]) > 1e-3: sign = float(np.sign(np.polyfit(t, x, 1)[0]))
+    x0, x1 = cx - sign * half, cx + sign * half
+    path = [(0.0, float(_cx(x0, win))), (float(max(length, 0.1)), float(_cx(x1, win)))]
+    inside = 1.0
+    if track:
+        t = np.array([a for a, _, _ in track], float); x = np.array([b for _, b, _ in track], float)
+        c = _cx(np.interp(t, [path[0][0], path[1][0]], [path[0][1], path[1][1]]), win)
+        inside = float((np.abs(x - c) <= win / 2 + 1e-6).mean())          # the subject's CENTRE stays in the window: its whole extent is wider than the window by construction (that is why it pans)
+    return {"mode": "pan", "path": path, "subjectX": cx, "inFrame": inside, "reason": f"subject spans ~{spread:.0%} (wider than the {win:.0%} window): slow pan across it instead of blurred fill"}

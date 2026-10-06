@@ -122,7 +122,10 @@ def render_format(plan: dict, src: str, out_path: str, fmt: str, workdir: str, f
         is_img = (s.get("kind") or kinds.get(aid, "video")) == "image"
         lay = _layout.decide(s, info.width, info.height, aspect); layouts.append(lay)
         L = s["end"] - s["start"]
-        base = (f"[{k}:v]trim=end={L:.3f},setpts=PTS-STARTPTS" if is_img else f"[{k}:v]trim=start={s['start']}:end={s['end']},setpts=PTS-STARTPTS")
+        sp = float(s.get("speed") or 1.0) if not is_img else 1.0
+        base = (f"[{k}:v]trim=end={L:.3f},setpts=PTS-STARTPTS" if is_img else
+                (f"[{k}:v]trim=start={s['start']}:end={s['end']},setpts=PTS-STARTPTS" if sp >= 0.999 else
+                 f"[{k}:v]trim=start={s['start']}:end={s['start'] + L * sp:.3f},setpts=(PTS-STARTPTS)/{sp},minterpolate=fps={fps}:mi_mode=blend"))      # slow motion: L*sp source seconds stretched over L, frames blended so it does not stutter
         if info.hdr and not is_img:                    # HDR (HLG / PQ) phone footage: tone-map to SDR BT.709, otherwise it comes out flat and washed out next to SDR clips
             base += "," + TONEMAP
         if s.get("grade") and not is_img:              # light colour match to the rest of the reel (creative/grade.py)

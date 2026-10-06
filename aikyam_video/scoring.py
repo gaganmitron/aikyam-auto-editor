@@ -11,6 +11,18 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
     "aesthetic": 0.0,   # EXP-012: opt-in until measured end to end
     "learned": 0.0,     # EXP-016: learned clip ranker (ranker.py); opt-in
 }
+
+V4_WEIGHTS: Dict[str, float] = {
+    "visualImportance": 0.35,
+    "devotionalRelevance": 0.30,
+    "semanticImportance": 0.20,
+    "audioImportance": 0.15,
+    "novelty": 0.0,
+    "completeness": 0.0,
+    "temporalImportance": 0.0,
+    "aesthetic": 0.0,
+    "learned": 0.0,
+}
 DEVOTIONAL = {"deity": 1.0, "idol": 0.9, "aarti": 1.0, "abhishekam": 1.0, "priest": 0.7, "procession": 0.8,
               "lamps": 0.7, "flowers": 0.5, "devotees": 0.5, "temple_architecture": 0.4, "decorations": 0.4, "crowd": 0.4,
               "sanctum_view": 0.8, "ritual_hands": 0.7, "offerings": 0.5, "incense_smoke": 0.5, "temple_bell": 0.5,
@@ -157,8 +169,8 @@ class ScoringConfig:
     weights: Dict[str, float]
 
     @classmethod
-    def load(cls, path: Optional[str] = None) -> "ScoringConfig":
-        w = dict(DEFAULT_WEIGHTS)
+    def load(cls, path: Optional[str] = None, engine: str = "creative") -> "ScoringConfig":
+        w = dict(V4_WEIGHTS if engine == "v4" else DEFAULT_WEIGHTS)
         if path:
             w.update(json.load(open(path)))
         unknown = set(w) - set(SCORERS)
